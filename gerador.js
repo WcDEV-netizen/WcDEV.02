@@ -565,13 +565,66 @@ ${partes.join("\n")}
   },
 
   /* ================= entrega com autoconferência ================= */
+  // plano + conferência com o projeto + verificação pelo analisador (só Pawn)
+  verificarPawn(codigo) {
+    const A = WCDEV.analisador, P = WCDEV.pawnAst;
+    // texto que aparece no jogo: sem acento (o chat do SA-MP mostra acento errado); comentários continuam com acento
+    codigo = codigo.replace(/"([^"\n]*)"/g, (m, t) => '"' + t.normalize("NFD").replace(/[\u0300-\u036f]/g, "") + '"');
+    const out = { codigo, plano: [], conflitos: [], integracao: [], verif: "", corrigidas: [] };
+    if (!A || !P) return out;
+    // 1. verificação: o código gerado passa pelo MESMO analisador que o código dos alunos
+    let a = A.analisar(codigo, "pawn", { semCache: true });
+    const serios = x => x.achados.filter(y => y.nivel === "erro" || y.nivel === "provavel");
+    if (serios(a).length) {
+      const c = A.corrigir(codigo, "pawn", { incluirSeguras: false });
+      if (c.aplicadas.length && serios(c.depois).length < serios(a).length) { out.codigo = c.codigo; out.corrigidas = c.aplicadas.map(x => x.titulo.replace(/\{\{|\}\}|\*\*/g, "")); a = c.depois; }
+    }
+    const s = serios(a);
+    out.verif = `${A.regras.pawn.length} regras de análise: ${s.length ? `**${s.length} ponto(s) sério(s)** que eu não consegui resolver sozinha (${s.slice(0, 2).map(x => x.titulo.replace(/\{\{|\}\}|\*\*/g, "")).join("; ")})` : "**nenhum problema sério**"}${out.corrigidas.length ? `, depois de corrigir ${out.corrigidas.length} coisa(s) no que eu mesma gerei` : ""}. Compilador: **não disponível aqui no navegador** (nos testes do projeto o código gerado é compilado no pawncc e executado).`;
+    // 2. plano: o que vai ser criado
+    const prog = P.analisarSintaxe(out.codigo);
+    const cmds = prog.funcoes.filter(f => f.tipo === "comando"), cbs = prog.funcoes.filter(f => f.callback), fns = prog.funcoes.filter(f => !f.callback && f.tipo !== "comando" && f.tipo !== "trecho");
+    if (prog.includes.length) out.plano.push(`Includes: ${prog.includes.map(i => `{{${i.nome}}}`).join(", ")}${prog.includes.some(i => /sscanf|mysql|streamer|bcrypt/i.test(i.nome)) ? " (alguns precisam do **plugin** na pasta plugins)" : ""}`);
+    if (prog.globais.length || prog.enums.length) out.plano.push(`Dados: ${[...prog.enums.map(e => `enum {{${e.nome || "?"}}}`), ...prog.globais.slice(0, 4).map(g => `{{${g.nome}}}`)].join(", ")}`);
+    if (fns.length) out.plano.push(`Funções: ${fns.map(f => `{{${f.nome}}}`).join(", ")}`);
+    if (cmds.length) out.plano.push(`Comandos: ${cmds.map(f => `{{/${f.nome}}}`).join(", ")}`);
+    if (cbs.length) out.plano.push(`Callbacks usados: ${cbs.map(f => `{{${f.nome}}}`).join(", ")}`);
+    // 3. conferência com o projeto aberto (editor) ou o código da conversa
+    const E = WCDEV.editor;
+    const fontes = [];
+    if (E && E.projeto) for (const [nome, cod] of E.projeto.arquivos) fontes.push([nome, cod]);
+    const u = estado.ultimoCodigo;
+    if (u && u.lang === "pawn" && !/^(gerado|gerador|aula)$/.test(u.origem || "")) fontes.push(["o seu código (da conversa)", u.codigo]);
+    for (const [nome, cod] of fontes) {
+      let pr; try { pr = P.analisarSintaxe(cod); } catch (e) { continue; }
+      for (const f of prog.funcoes) {
+        const igual = pr.funcoes.find(g => g.nome === f.nome && (g.tipo === "comando") === (f.tipo === "comando"));
+        if (!igual) continue;
+        if (f.callback) out.integracao.push(`Seu projeto já tem {{${f.nome}}} (**${nome}**, linha ${igual.linhaNome}). **Não cole o callback inteiro** (daria error 021): copie só o que está dentro dele pro seu.`);
+        else out.conflitos.push(`${f.tipo === "comando" ? `O comando {{/${f.nome}}}` : `A função {{${f.nome}}}`} **já existe** em **${nome}** (linha ${igual.linhaNome}). Renomeie um deles antes de juntar (senão: error 021).`);
+      }
+      for (const g of prog.globais) { const gl = pr.globais.find(x => x.nome === g.nome); if (gl) out.conflitos.push(`A variável {{${g.nome}}} já existe em **${nome}** (linha ${gl.linha}).`); }
+      if (/\bmysql_\w+\s*\(/.test(cod) && /DOF2_/.test(out.codigo)) out.integracao.push(`Seu projeto usa **MySQL** (em **${nome}**) e eu gerei o salvamento com **DOF2**. Isso muda a arquitetura: quer que eu adapte pra MySQL? Até lá, não misture os dois pra mesma conta.`);
+      if (/#include\s*<Pawn\.CMD>/i.test(cod) && cmds.length) out.integracao.push("Seu projeto usa **Pawn.CMD**: troque {{CMD:nome(playerid, params[])}} por {{cmd:nome(playerid, params[])}} (e não inclua o zcmd).");
+    }
+    if (!fontes.length && cbs.length) out.integracao.push(`Se o seu gamemode **já tem** ${cbs.map(f => `{{${f.nome}}}`).join(", ")}, não cole esses callbacks inteiros: copie só o conteúdo pra dentro dos seus (callback repetido dá error 021).`);
+    return out;
+  },
+
   entregar(lang, titulo, codigo, oque, notas) {
+    const vp = lang === "pawn" ? this.verificarPawn(codigo) : null;
+    if (vp) codigo = vp.codigo;
     const r = WCDEV.revisor ? WCDEV.revisor.analisar(codigo, lang) : { problemas: [] };
     const erros = r.problemas.filter(p => p.tipo === "erro");
     if (WCDEV.motor) WCDEV.motor.passo("Validação", `passei o código no revisor de ${NOMES[lang]}: ${erros.length} erro(s), ${r.problemas.length - erros.length} aviso(s)` + (r.problemas.some(p => /main\(\)/.test(p.msg)) ? " (o aviso do main() é normal: é um pedaço pra colar no seu gamemode)" : ""));
     let texto = `> 🧠 Entendi o que você quer e montei o código. Depois passei ele no meu revisor: ${erros.length ? `achei ${erros.length} ponto(s) pra conferir.` : "**nenhum erro** encontrado."}\n`;
-    texto += `### ✅ ${titulo}\n**O que esse código faz:**\n${oque.map(x => "- " + x).join("\n")}\n~~~${lang}\n${codigo}\n~~~\n`;
+    texto += `### ✅ ${titulo}\n**O que esse código faz:**\n${oque.map(x => "- " + x).join("\n")}\n`;
+    if (vp && vp.plano.length) texto += `**📋 Plano (o que vai ser criado):**\n${vp.plano.map(x => "- " + x).join("\n")}\n`;
+    if (vp && vp.conflitos.length) texto += `\n**⚠️ Conflito com o seu projeto:**\n${vp.conflitos.map(x => "- " + x).join("\n")}\n`;
+    texto += `~~~${lang}\n${codigo}\n~~~\n`;
+    if (vp) texto += `**🔬 Verificação:** ${vp.verif}\n`;
     if (notas && notas.length) texto += `**Como usar:**\n${notas.map(x => "- " + x).join("\n")}`;
+    if (vp && vp.integracao.length) texto += `\n**🔗 Como juntar com o seu gamemode:**\n${vp.integracao.map(x => "- " + x).join("\n")}`;
     estado.ultimoCodigo = { codigo, lang, origem: "gerado" };
     return { texto, sugestoes: ["/explicar", "/desafio " + lang, "/editor"], preview: lang === "html" ? codigo.replace(/^[\s\S]*<body>|<\/body>[\s\S]*$/g, "").replace(/^/, codigo.match(/<style>[\s\S]*<\/style>/)[0]) : null };
   },

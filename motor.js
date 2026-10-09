@@ -247,6 +247,7 @@ const Motor = {
     ["depuracao", "debugar", "debug", "depurar", "achar o erro", "encontrar erro", "rastrear erro", "breakpoint", "pdb", "traceback"],
     ["overflow", "saindo da tela", "estourando", "vazando", "passando da tela", "ultrapassando", "barra de rolagem lateral", "rolagem horizontal", "scroll horizontal"],
     ["centralizar", "centro", "no meio", "meio da tela"],
+    ["ver", "pegar", "pega", "obter", "consultar", "checar", "saber quanto", "quanto tem"],
     ["responsivo", "celular", "mobile", "tela pequena"],
     ["comando", "cmd", "comandos"],
   ],
@@ -317,7 +318,7 @@ const Motor = {
     [/ (c#|c sharp|csharp) /, "C#"], [/ (c\+\+|cpp) /, "C++"], [/ (linguagem c|em c|no c|codigo c) /, "C"], [/ (php|laravel) /, "PHP"],
     [/ (golang|em go|linguagem go) /, "Go"], [/ (kotlin) /, "Kotlin"], [/ (swift) /, "Swift"], [/ (lua|roblox|luau) /, "Lua/Roblox"],
     [/ (ruby|rails) /, "Ruby"], [/ (flutter|dart) /, "Flutter/Dart"], [/ (nginx|apache) /, "servidor web (Nginx/Apache)"],
-    [/ (docker|kubernetes) /, "Docker"], [/ (unity|unreal|godot) /, "motores de jogo (Unity/Unreal/Godot)"], [/ (excel|vba) /, "Excel/VBA"],
+    [/ (docker) /, "Docker"], [/ (kubernetes|k8s|helm) /, "Kubernetes"], [/ (terraform|ansible) /, "Terraform/infraestrutura"], [/ (postgres|postgresql) /, "PostgreSQL"], [/ (aws|azure|gcp|google cloud) /, "nuvem (AWS/Azure/GCP)"], [/ (unity|unreal|godot) /, "motores de jogo (Unity/Unreal/Godot)"], [/ (excel|vba) /, "Excel/VBA"],
     [/ (assembly|assembler) /, "Assembly"], [/ (kotlin|android studio) /, "Android"],
   ],
   foraDaBase(t, bruto) {
@@ -412,11 +413,11 @@ const Motor = {
 
   /* "deu erro" / "não compila" sem colar nada: usa o último código ou pede o código */
   semCodigo(t) {
-    if (!/ (deu erro|da erro|ta dando erro|esta dando erro|nao compila|nao compilar|nao compilou|nao ta compilando|nao esta compilando|nao funciona|nao ta funcionando|bugou|ta bugado|crashou) /.test(t)) return null;
+    if (!/ (deu erro|da erro|ta dando erro|esta dando erro|nao compila|nao compilar|nao compilou|nao ta compilando|nao esta compilando|nao funciona|nao ta funcionando|bugou|ta bugado|ta bugando|esta bugado|crashou) /.test(t)) return null;
     if (t.split(" ").length > 12) return null;
     // "z-index não funciona" é pergunta de assunto, não "meu código deu erro"
-    const resto = t.replace(/ (deu erro|da erro|ta dando erro|esta dando erro|nao compila|nao compilar|nao compilou|nao funciona|nao ta funcionando|bugou|ta bugado|crashou) /, " ");
-    if (this.palavrasDoAssunto(resto).some(p => !/^(codigo|script|gamemode|gm|programa|meu|aqui|isso|ajuda|socorro|help|ele|nada)$/.test(p))) return null;
+    const resto = t.replace(/ (deu erro|da erro|ta dando erro|esta dando erro|nao compila|nao compilar|nao compilou|nao funciona|nao ta funcionando|bugou|ta bugado|ta bugando|esta bugado|crashou) /, " ");
+    if (this.palavrasDoAssunto(resto).some(p => !/^(codigo|script|gamemode|gm|programa|meu|minha|aqui|isso|ajuda|ajude|socorro|help|ele|nada|me|pfv|pf|favor|mano|cara)$/.test(p))) return null;
     if (/ (servidor|server) (ta |esta )?(crashando|caindo|crashou)/.test(t)) return null;
     const c = this.codigoRecente();
     if (c && c.origem !== "aula") {

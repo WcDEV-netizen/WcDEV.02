@@ -216,7 +216,8 @@ const TelaConta = {
       if (err) return this.login(modo, err);
       this.checar();
     };
-    setTimeout(() => this.el.querySelector("#contaNome").focus(), 50);
+    // só põe o foco no nome se a pessoa (ou o preenchimento automático) ainda não estiver digitando em outro campo
+    setTimeout(() => { const a = document.activeElement; if (!(a && a.tagName === "INPUT" && this.el.contains(a))) this.el.querySelector("#contaNome").focus(); }, 50);
   },
 
   planos(aviso = "", podeVoltar = false) {

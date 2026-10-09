@@ -99,11 +99,20 @@
         <button id="edFormatar" title="Arrumar o recuo (Shift+Alt+F)">✨ Formatar</button>
         <button id="edAbrir" title="Abrir arquivo do aparelho">📂 Abrir</button>
         <button id="edBaixar" title="Baixar o arquivo">💾 Baixar</button>
+        <button id="edProjeto" title="Abrir vários arquivos (.pwn/.inc) como um projeto">📁 Projeto</button>
         <span class="ed-espaco"></span>
         <button id="edMenor" title="Letra menor" aria-label="Letra menor">A−</button>
         <button id="edMaior" title="Letra maior" aria-label="Letra maior">A+</button>
         <input type="file" id="edArquivo" hidden accept=".pwn,.inc,.p,.py,.html,.htm,.css,.js,.mjs,.txt">
+        <input type="file" id="edProjArqs" hidden multiple accept=".pwn,.inc,.p">
+        <input type="file" id="edProjPasta" hidden webkitdirectory multiple>
       </div>
+      <div class="ed-menu" id="edMenuProjeto" hidden>
+        <button data-p="arquivos">📄 Escolher arquivos (.pwn / .inc)</button>
+        <button data-p="pasta">📁 Escolher uma pasta (PC)</button>
+        <button data-p="fechar">✕ Fechar o projeto</button>
+      </div>
+      <div class="ed-abas" id="edAbas" role="tablist" aria-label="Arquivos do projeto" hidden></div>
       <div class="ed-menu" id="edMenuModelos" hidden></div>
       <div class="editor-exercicio" id="editorExercicio" hidden></div>
       <div class="editor-area" id="editorArea">
@@ -131,6 +140,8 @@
       </div>
       <div class="editor-botoes">
         <button class="btn-primario" id="btnEnviarResposta" hidden>✔ Enviar resposta</button>
+        <button class="btn-primario" id="btnAnalisarProj" hidden>🔬 Analisar projeto</button>
+        <button id="btnCorrigirProj" hidden>🔧 Corrigir projeto</button>
         <button id="btnRevisar">🔎 Revisar</button>
         <button id="btnCorrigirCod">🔧 Corrigir</button>
         <button id="btnExplicarCod">📖 Explicar</button>
@@ -158,12 +169,17 @@
   <script src="problemas.js"></script>
   <!-- Ferramentas: revisor de código, treino e "ensinar" -->
   <script src="revisor.js"></script>
+  <script src="pawn-ast.js"></script>
   <script src="analisador.js"></script>
+  <script src="analisador-fluxo.js"></script>
+  <script src="projeto.js"></script>
+  <script src="analise-historico.js"></script>
   <script src="treino.js"></script>
   <!-- Inteligência: entender frases, explicar/corrigir código, gerar código e desafios -->
   <script src="cerebro.js"></script>
   <script src="motor.js"></script>
   <script src="professor.js"></script>
+  <script src="professor-adaptativo.js"></script>
   <script src="explicador.js"></script>
   <script src="gerador.js"></script>
   <script src="desafios.js"></script>

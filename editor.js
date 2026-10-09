@@ -118,11 +118,26 @@ const Editor = {
     $("edAbrir").onclick = () => $("edArquivo").click();
     $("edArquivo").onchange = e => this.abrirArquivo(e.target.files[0]);
     $("edBaixar").onclick = () => this.baixar();
+    // projeto (vários arquivos)
+    $("edProjeto").onclick = e => { e.stopPropagation(); const m = $("edMenuProjeto"); m.hidden = !m.hidden; m.querySelector('[data-p="fechar"]').hidden = !this.projeto; };
+    $("edMenuProjeto").addEventListener("click", e => {
+      const b = e.target.closest("[data-p]"); if (!b) return;
+      $("edMenuProjeto").hidden = true;
+      if (b.dataset.p === "arquivos") $("edProjArqs").click();
+      if (b.dataset.p === "pasta") $("edProjPasta").click();
+      if (b.dataset.p === "fechar") this.fecharProjeto();
+    });
+    $("edProjArqs").onchange = e => { this.lerArquivosProjeto(e.target.files); e.target.value = ""; };
+    $("edProjPasta").onchange = e => { this.lerArquivosProjeto(e.target.files); e.target.value = ""; };
+    $("edAbas").addEventListener("click", e => { const b = e.target.closest("[data-arq]"); if (b) this.trocarArquivo(b.dataset.arq); });
+    $("btnAnalisarProj").onclick = () => { this.salvarArquivoAtual(); enviar("/projeto analisar"); };
+    $("btnCorrigirProj").onclick = () => { this.salvarArquivoAtual(); enviar("/projeto corrigir"); };
     $("edMenor").onclick = () => this.mudarFonte(-1);
     $("edMaior").onclick = () => this.mudarFonte(1);
     this.status.problemas.onclick = () => this.irProProblema();
     document.addEventListener("click", e => {
       if (!e.target.closest("#edMenuModelos")) $("edMenuModelos").hidden = true;
+      if (!e.target.closest("#edMenuProjeto") && e.target.id !== "edProjeto") $("edMenuProjeto").hidden = true;
       if (!e.target.closest("#edAuto") && e.target !== this.area) this.fecharAuto();
     });
 
@@ -150,6 +165,7 @@ const Editor = {
       if (li) { this.autoSel = +li.dataset.i; this.aceitarAuto(); }
     });
 
+    this.carregarProjetoSalvo();
     this.fonte = +(Guardar.ler("wcdev_editor_fonte", 14)) || 14;
     this.aplicarFonte();
     this.atualizarBotoes();
@@ -211,6 +227,12 @@ const Editor = {
 
   // coloca um código pronto no editor (ex: o código que a IA corrigiu)
   colocar(codigo, lang) {
+    const atual = this.area.value;
+    if (atual.trim() && atual !== codigo) {
+      // não substitui sem guardar: a versão de antes vai pra /versoes
+      if (this.projeto && typeof confirm === "function" && !confirm(`Colocar esse código no arquivo ${this.projeto.atual}? A versão de agora fica guardada em /versoes.`)) return;
+      if (WCDEV.analiseHistorico) WCDEV.analiseHistorico.guardarVersao(`antes de colocar código no editor${this.projeto ? " (" + this.projeto.atual + ")" : ""}`, { tipo: "codigo", codigo: atual, lang: this.lang.value });
+    }
     if (lang && NOMES[lang]) this.lang.value = lang;
     this.area.value = codigo;
     this.atualizar();
@@ -823,6 +845,76 @@ const Editor = {
     this.aviso(`💾 Baixando ${nome}`);
   },
 
+  /* ================= PROJETO (vários arquivos) ================= */
+  projeto: null,   // { nome, arquivos: Map(caminho -> código), atual }
+  lerArquivosProjeto(lista) {
+    const arqs = [...(lista || [])].filter(f => /\.(pwn|inc|p)$/i.test(f.name));
+    if (!arqs.length) { this.aviso("Nenhum .pwn/.inc nessa seleção"); return; }
+    const total = arqs.reduce((s, f) => s + f.size, 0);
+    if (total > 8 * 1024 * 1024) { this.aviso("Projeto grande demais (máx. 8 MB)"); return; }
+    // caminho relativo: tira a pasta de cima ("gamemodes/") pra os #include "x/y.inc" baterem
+    const caminhos = arqs.map(f => (f.webkitRelativePath || f.name).replace(/\\/g, "/"));
+    const topo = caminhos.every(c => c.includes("/")) && new Set(caminhos.map(c => c.split("/")[0])).size === 1 ? caminhos[0].split("/")[0] + "/" : "";
+    Promise.all(arqs.map((f, i) => new Promise(ok => { const r = new FileReader(); r.onload = () => ok([caminhos[i].slice(topo.length), String(r.result).replace(/\r\n?/g, "\n")]); r.onerror = () => ok(null); r.readAsText(f); })))
+      .then(pares => this.abrirProjeto(Object.fromEntries(pares.filter(Boolean)), topo.replace(/\/$/, "") || "projeto"));
+  },
+  abrirProjeto(arquivos, nome) {
+    const mapa = new Map(Object.entries(arquivos));
+    if (!mapa.size) return;
+    this.projeto = { nome: nome || "projeto", arquivos: mapa, atual: null };
+    const principal = WCDEV.projeto ? WCDEV.projeto.principaisDe(mapa)[0] : [...mapa.keys()][0];
+    this.lang.value = "pawn";
+    this.atualizarBotoes();
+    this.trocarArquivo(principal || [...mapa.keys()][0]);
+    this.desenharAbas();
+    this.salvarProjeto();
+    this.aviso(`📁 ${mapa.size} arquivo(s) abertos`);
+  },
+  desenharAbas() {
+    const el = document.getElementById("edAbas");
+    const p = this.projeto;
+    el.hidden = !p;
+    document.getElementById("btnAnalisarProj").hidden = !p;
+    document.getElementById("btnCorrigirProj").hidden = !p;
+    if (!p) { el.innerHTML = ""; return; }
+    el.innerHTML = [...p.arquivos.keys()].sort().map(k => `<button role="tab" aria-selected="${k === p.atual}" class="ed-aba${k === p.atual ? " on" : ""}" data-arq="${k.replace(/"/g, "&quot;")}" title="${k.replace(/"/g, "&quot;")}">${k.split("/").pop().replace(/</g, "&lt;")}</button>`).join("");
+  },
+  salvarArquivoAtual() { if (this.projeto && this.projeto.atual) { this.projeto.arquivos.set(this.projeto.atual, this.area.value); this.salvarProjeto(); } },
+  trocarArquivo(nome) {
+    const p = this.projeto;
+    if (!p || !p.arquivos.has(nome)) return;
+    if (p.atual && p.atual !== nome) p.arquivos.set(p.atual, this.area.value);
+    p.atual = nome;
+    this._carregandoProjeto = true;
+    this.area.value = p.arquivos.get(nome);
+    this._carregandoProjeto = false;
+    this.status.arquivo.textContent = nome;
+    this.area.setSelectionRange(0, 0); this.area.scrollTop = 0;
+    this.atualizar();
+    this.desenharAbas();
+  },
+  fecharProjeto() {
+    if (!this.projeto) return;
+    this.salvarArquivoAtual();
+    this.projeto = null;
+    try { localStorage.removeItem(chaveDoUsuario("projeto")); } catch (e) { /* sem armazenamento */ }
+    this.desenharAbas();
+    this.status.arquivo.textContent = "main." + this.EXT[this.lang.value];
+    this.carregarRascunho();
+    this.aviso("Projeto fechado (os arquivos do seu PC não foram mexidos)");
+  },
+  salvarProjeto() {
+    clearTimeout(this._tp);
+    this._tp = setTimeout(() => {
+      if (!this.projeto) return;
+      const obj = { nome: this.projeto.nome, atual: this.projeto.atual, arquivos: Object.fromEntries(this.projeto.arquivos) };
+      try { const j = JSON.stringify(obj); if (j.length < 1500000) localStorage.setItem(chaveDoUsuario("projeto"), j); } catch (e) { /* projeto grande: fica só nesta sessão */ }
+    }, 500);
+  },
+  carregarProjetoSalvo() {
+    try { const j = JSON.parse(localStorage.getItem(chaveDoUsuario("projeto")) || "null"); if (j && j.arquivos) { this.abrirProjeto(j.arquivos, j.nome); if (j.atual) this.trocarArquivo(j.atual); } } catch (e) { /* nada salvo */ }
+  },
+
   /* ================= LETRA / AVISOS ================= */
   mudarFonte(d) {
     this.fonte = Math.max(11, Math.min(22, this.fonte + d));
@@ -844,6 +936,7 @@ const Editor = {
   /* ================= RASCUNHO (salvo por linguagem) ================= */
   salvarRascunho(agora) {
     if (Treino.ativo) return;   // rascunho do treino não precisa ficar
+    if (this.projeto) { if (!this._carregandoProjeto) { this.projeto.arquivos.set(this.projeto.atual, this.area.value); this.salvarProjeto(); } return; }
     clearTimeout(this._t);
     const gravar = () => {
       const r = Guardar.ler(chaveDoUsuario("rascunhos"), {});

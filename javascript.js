@@ -450,7 +450,7 @@ WCDEV.refs = WCDEV.refs || [];
 WCDEV.refs.push({ lang: "javascript", grupo: "Básico", itens: [
   ["console.log", "Mostra valores no **Console** (F12).", `console.log("Pontos:", 10);`],
   ["typeof", "Diz o **tipo** de um valor.", `console.log(typeof 42);   // "number"`],
-  ["Number", "Converte texto em **número** ({{NaN}} se não der).", `const n = Number("42");`, "converter para numero"],
+  ["Number", "Converte texto em **número** ({{NaN}} se não der).", `const n = Number("42");`, "converter para numero|converter string pra numero|string para numero|texto pra numero|transformar em numero"],
   ["parseInt", "Pega o **inteiro** do começo de um texto.", `parseInt("42px");   // 42`],
   ["String", "Converte em **texto**.", `String(42);   // "42"`],
   ["Math.random", "Número aleatório entre 0 e 1.", `const dado = Math.floor(Math.random() * 6) + 1;`, "sortear numero javascript|numero aleatorio javascript"],

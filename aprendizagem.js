@@ -28,9 +28,10 @@ const Aprendizagem = (() => {
   function carregar() {
     WCDEV.temas = WCDEV.temas.filter(t => !t.importado);
     for (const v of base().versoes) for (const it of v.itens) {
+      if (it.obsoleto) continue;   // obsoleto: fica guardado, mas não aparece nas respostas
       const tema = {
         id: it.id, lang: it.lang, importado: true, versao: v.id, titulo: it.titulo, chaves: it.chaves,
-        resposta: `### ${it.titulo}\n${it.corpo}\n\n📥 *Conteúdo importado de **${v.origem}** em ${v.data}* · confiabilidade: **${it.confianca}**${it.aviso ? ` · ⚠️ ${it.aviso}` : ""}`,
+        resposta: `### ${it.titulo}\n${it.corpo}\n\n📥 *Conteúdo importado de **${v.origem}** em ${v.data}* · situação: **${it.verificado ? "verificado por você" : "experimental"}** (${it.confianca})${it.aviso ? ` · ⚠️ ${it.aviso}` : ""}${(it.conflitos || []).length ? ` · ⚔️ conflita com a referência: ${it.conflitos.join("; ")}` : ""}`,
         sugestoes: ["/importados"],
       };
       prepararTema(tema);
@@ -96,16 +97,35 @@ const Aprendizagem = (() => {
         const l = NOMES[m[1]] ? m[1] : lang;
         if (WCDEV.revisor && NOMES[l]) erros += (WCDEV.revisor.analisar(m[2], l) || { problemas: [] }).problemas.filter(p => p.tipo === "erro").length;
       }
+      // Pawn: o analisador completo (lógica, segurança); conflito = chamada que não bate com a assinatura oficial
+      const conflitos = [];
+      let problemas = 0;
+      if (WCDEV.analisador) {
+        const blocos = [...it.corpo.matchAll(/~~~(\w*)\n([\s\S]*?)~~~/g)].filter(m => (m[1] || lang) === "pawn").map(m => m[2]);
+        const inline = [...it.corpo.matchAll(/\{\{([A-Z]\w+\([^{}]*\))\}\}|`([A-Z]\w+\([^`]*\))`/g)].map(m => (m[1] || m[2]) + ";");
+        for (const cod of blocos.concat(inline.length ? [inline.join("\n")] : [])) {
+          const a = WCDEV.analisador.analisar(cod, "pawn", { semCache: true });
+          a.achados.filter(x => x.regra === "assinatura-errada").forEach(x => conflitos.push(x.titulo.replace(/\{\{|\}\}|\*\*/g, "")));
+          problemas += a.achados.filter(x => (x.nivel === "erro" || x.nivel === "provavel") && x.regra !== "assinatura-errada").length;
+        }
+      }
       if (erros) aviso = `o código deste item tem ${erros} erro(s) segundo o meu revisor`;
+      if (problemas) aviso = (aviso ? aviso + "; " : "") + `${problemas} problema(s) de lógica/segurança segundo o analisador`;
+      it._conflitos = [...new Set(conflitos)].slice(0, 4);
+      it._problemas = problemas;
       const chaves = [...new Set([it.titulo, ...(it.chaves || []), ...[...it.corpo.matchAll(/\*\*([^*]{3,40})\*\*/g)].map(m => m[1])].map(x => x.trim()).filter(x => x.length >= 3))].slice(0, 16);
-      versao.itens.push({ id: `imp-${versao.id}-${versao.itens.length}`, lang, titulo: it.titulo.slice(0, 90), corpo: it.corpo, chaves, confianca: erros ? "não revisado, com erros" : "não revisado", aviso });
+      versao.itens.push({ id: `imp-${versao.id}-${versao.itens.length}`, lang, titulo: it.titulo.slice(0, 90), corpo: it.corpo, chaves, confianca: it._conflitos.length ? "conflita com a referência oficial" : (erros || it._problemas) ? "não revisado, exemplo com problema" : "não revisado, exemplos sem problema nas minhas checagens", aviso, conflitos: it._conflitos, problemasExemplo: (erros || 0) + (it._problemas || 0) });
     }
     if (!versao.itens.length) {
       return { texto: `### 📥 Nada importado de **${nome}**\n` + resumoPulados(pulados) + "\n\nDica: use títulos (# ou ##) separando cada assunto, com pelo menos um parágrafo embaixo." };
     }
+    const antes = respostasDeReferencia();
     b.versoes.push(versao);
     if (!salvarBase(b)) return { texto: "⚠️ O navegador não deixou salvar (armazenamento cheio ou bloqueado). Nada foi importado." };
     carregar();
+    const depois = respostasDeReferencia();
+    const mudaram = Object.keys(antes).filter(q => antes[q] !== depois[q]).map(q => `"${q}": antes **${antes[q] || "nada"}** → agora **${depois[q] || "nada"}**`);
+    versao.regressao = mudaram.length;
     if (WCDEV.motor) WCDEV.motor.passo("Aprendizagem", `importei ${versao.itens.length} item(ns) de ${nome} como versão ${versao.id}`);
     const porLang = {};
     versao.itens.forEach(i => (porLang[i.lang] = (porLang[i.lang] || 0) + 1));
@@ -113,7 +133,11 @@ const Aprendizagem = (() => {
       texto: `### 📥 Importei ${versao.itens.length} item(ns) de **${nome}**\n` +
         Object.entries(porLang).map(([l, n]) => `- ${NOMES[l] || "Geral"}: ${n}`).join("\n") +
         (Object.values(pulados).some(x => x.length) ? "\n\n" + resumoPulados(pulados) : "") +
-        `\n\n**Versão:** {{${versao.id}}} · ${versao.data}\nEsses itens ficam marcados como **não revisados** e aparecem com a origem quando eu usar. Não é treinamento de modelo: é a minha base de consulta crescendo.\nSe algo ficou ruim: **/desfazer importação**.`,
+        `\n\n**Versão:** {{${versao.id}}} · ${versao.data}\nEsses itens entram como **experimentais** e aparecem com a origem quando eu usar. Não é treinamento de modelo: é a minha base de consulta crescendo.` +
+        (versao.itens.some(i => (i.conflitos || []).length) ? `\n\n⚔️ **Conflitos com a referência oficial:**\n${versao.itens.filter(i => (i.conflitos || []).length).slice(0, 5).map(i => `- ${i.titulo}: ${i.conflitos.join("; ")}`).join("\n")}` : "") +
+        (versao.itens.some(i => i.problemasExemplo) ? `\n\n⚠️ **Exemplos com problema** (conferi com o meu analisador): ${versao.itens.filter(i => i.problemasExemplo).map(i => i.titulo).slice(0, 5).join("; ")}` : "") +
+        `\n\n🧪 **Teste de regressão:** conferi ${Object.keys(antes).length} perguntas de referência antes e depois: ${mudaram.length ? `**${mudaram.length} resposta(s) mudaram**:\n${mudaram.slice(0, 5).map(x => "- " + x).join("\n")}\nSe piorou, use **/desfazer importação**.` : "nenhuma resposta antiga mudou. ✅"}` +
+        `\n\nComandos: **/verificar importado ID** (marca como verificado) · **/obsoleto ID** (tira das respostas) · **/desfazer importação**.`,
       sugestoes: [versao.itens[0].titulo, "/importados", "/desfazer importação"],
     };
   }
@@ -128,7 +152,7 @@ const Aprendizagem = (() => {
     const b = base();
     if (!b.versoes.length) return { texto: "Você ainda não importou nada. Use **/importar** e escolha um arquivo **.md**, **.txt** ou de código (.pwn, .py, .js...).\nCada título (# ou ##) do arquivo vira um assunto que eu passo a conhecer.", sugestoes: ["/importar"] };
     return {
-      texto: "### 📚 Base importada\n" + b.versoes.map(v => `- **${v.id}** · ${v.origem} · ${v.data} · ${v.itens.length} item(ns): ${v.itens.slice(0, 4).map(i => i.titulo).join(", ")}${v.itens.length > 4 ? "..." : ""}`).join("\n") +
+      texto: "### 📚 Base importada\n" + b.versoes.map(v => `- **${v.id}** · ${v.origem} · ${v.data} · ${v.itens.length} item(ns)${v.regressao ? ` · ⚠️ mudou ${v.regressao} resposta(s) de referência` : ""}\n${v.itens.slice(0, 6).map(i => `  - {{${i.id}}} ${i.titulo} — ${i.obsoleto ? "🗄 obsoleto" : i.verificado ? "✔ verificado" : (i.conflitos || []).length ? "⚔️ conflito" : i.problemasExemplo ? "⚠️ exemplo com problema" : "🧪 experimental"}`).join("\n")}${v.itens.length > 6 ? "\n  - ..." : ""}`).join("\n") +
         "\n\n**/desfazer importação** tira a última versão. **/apagar importação ID** tira uma específica.",
       sugestoes: ["/desfazer importação", "/importar"],
     };
@@ -157,6 +181,55 @@ const Aprendizagem = (() => {
     };
     input.click();
     return { texto: "Escolha o arquivo pra eu importar (**.md**, **.txt** ou código). Cada título vira um assunto novo na minha base, marcado como **não revisado**.", _semMemoria: true };
+  }
+
+  // perguntas fixas: a importação não pode mudar a resposta delas sem eu avisar
+  const REFERENCIA = ["como dar dinheiro pro jogador", "como criar um comando no samp", "como salvar conta com dof2", "como fazer um for em python", "como centralizar uma div",
+    "como usar sscanf", "o que e um enum", "como criar um dialog", "como fazer um timer", "como mudar a cor do texto css", "como pegar o nome do jogador", "como usar if no pawn",
+    "como fazer uma funcao em javascript", "como ler input em python", "como teleportar o jogador", "como dar arma pro jogador", "o que e uma variavel", "como fazer login no samp"];
+  function respostasDeReferencia() {
+    const out = {};
+    if (typeof buscarTema !== "function") return out;
+    for (const q of REFERENCIA) { try { const t = buscarTema(normalizar(q), null); out[q] = t ? t.titulo : ""; } catch (e) { out[q] = ""; } }
+    return out;
+  }
+  function acharItem(id) { const b = base(); for (const v of b.versoes) { const it = v.itens.find(i => i.id === id); if (it) return { b, v, it }; } return null; }
+  function marcarObsoleto(id) {
+    const x = id && acharItem(id);
+    if (!x) return { texto: "Não achei esse item. Os IDs aparecem em **/importados**.", sugestoes: ["/importados"] };
+    x.it.obsoleto = !x.it.obsoleto;
+    salvarBase(x.b); carregar();
+    return { texto: x.it.obsoleto ? `🗄 **${x.it.titulo}** marcado como **obsoleto**: continua guardado, mas não aparece mais nas respostas. (De novo o mesmo comando desfaz.)` : `↩ **${x.it.titulo}** voltou a valer.` };
+  }
+  function marcarVerificado(id) {
+    const x = id && acharItem(id);
+    if (!x) return { texto: "Não achei esse item. Os IDs aparecem em **/importados**.", sugestoes: ["/importados"] };
+    if ((x.it.conflitos || []).length || x.it.problemasExemplo) return { texto: `Não dá pra marcar **${x.it.titulo}** como verificado: ${(x.it.conflitos || []).length ? "ele conflita com a referência oficial (" + x.it.conflitos.join("; ") + ")" : "o exemplo dele tem problema segundo o meu analisador"}. Corrija o arquivo e importe de novo.` };
+    x.it.verificado = true;
+    salvarBase(x.b); carregar();
+    return { texto: `✔ **${x.it.titulo}** marcado como **verificado por você**. (Eu continuo mostrando a origem.)` };
+  }
+  // passa o analisador em TODOS os exemplos de código da base (o que achou bug real nas aulas)
+  function verificarBase() {
+    const A = WCDEV.analisador, Rv = WCDEV.revisor;
+    const t0 = Date.now();
+    let total = 0;
+    const achados = [];
+    for (const t of WCDEV.temas) {
+      if (typeof t.resposta !== "string") continue;
+      for (const m of t.resposta.matchAll(/~~~(\w+)\n([\s\S]*?)~~~/g)) {
+        const l = m[1], cod = m[2];
+        if (!NOMES[l] || /\/\/\s*(errado|erro:)|#\s*errado|<!--\s*errado/i.test(cod)) continue;   // exemplo errado de propósito
+        total++;
+        if (l === "pawn" && A) { const r = A.analisar(cod, "pawn"); const x = r.sintaxe.filter(s => s.tipo === "erro").length + r.achados.filter(a => a.nivel === "erro" || a.nivel === "provavel").length; if (x) achados.push(`${t.importado ? "📥 " : ""}**${t.titulo}** (${NOMES[l]}): ${[...r.sintaxe.filter(s => s.tipo === "erro").map(s => s.msg), ...r.achados.filter(a => a.nivel === "erro" || a.nivel === "provavel").map(a => a.titulo.replace(/\{\{|\}\}|\*\*/g, ""))].slice(0, 2).join("; ")}`); }
+        else if (Rv) { const r = Rv.analisar(cod, l); const x = r ? r.problemas.filter(p => p.tipo === "erro") : []; if (x.length) achados.push(`${t.importado ? "📥 " : ""}**${t.titulo}** (${NOMES[l]}): ${x.slice(0, 2).map(p => p.msg).join("; ")}`); }
+      }
+    }
+    return { texto: `### 🧪 Verificação dos exemplos da base
+Conferi **${total}** exemplos de código (sintaxe em todas as linguagens; em Pawn também lógica e segurança) em ${Date.now() - t0} ms. Exemplos marcados como "errado" de propósito ficam de fora.\n` +
+      (achados.length ? `\n**${achados.length} exemplo(s) com problema:**
+${achados.slice(0, 20).map(x => "- " + x).join("\n")}` : "\n✅ Nenhum exemplo com erro ou problema provável.") +
+      "\n\n⚙️ Aqui no navegador não tem compilador: nos testes do projeto eu também compilo os exemplos Pawn com o **pawncc** de verdade.", sugestoes: ["/importados"] };
   }
 
   /* ================= 2. REGRAS DE ANÁLISE CRIADAS POR VOCÊ ================= */
@@ -264,7 +337,7 @@ Tudo fica salvo **neste navegador**.`,
     };
   }
 
-  return { carregar, importar, abrirSeletor, listarImportados, desfazer, criarRegra, listarRegras, apagarRegra, aplicarRegrasUsuario, registrarFeedback, listarFeedback, exportarFeedback, comoAprendo, LIM };
+  return { carregar, importar, abrirSeletor, listarImportados, desfazer, marcarObsoleto, marcarVerificado, verificarBase, respostasDeReferencia, criarRegra, listarRegras, apagarRegra, aplicarRegrasUsuario, registrarFeedback, listarFeedback, exportarFeedback, comoAprendo, LIM };
 })();
 
 WCDEV.aprendizagem = Aprendizagem;

@@ -1034,7 +1034,7 @@ GetPlayerIp(playerid, ip, sizeof(ip));`, "ip do jogador"],
   ["GivePlayerMoney", "**Dá ou tira dinheiro** (valor negativo tira).", `GivePlayerMoney(playerid, 1000);
 GivePlayerMoney(playerid, -500);`, "dar dinheiro|dar grana|tirar dinheiro"],
   ["GetPlayerMoney", "Quanto **dinheiro** o jogador tem.", `if (GetPlayerMoney(playerid) < 500)
-    return SendClientMessage(playerid, -1, "Dinheiro insuficiente.");`, "ver dinheiro|quanto dinheiro"],
+    return SendClientMessage(playerid, -1, "Dinheiro insuficiente.");`, "ver dinheiro|quanto dinheiro|pegar dinheiro|pega o dinheiro|saber o dinheiro"],
   ["ResetPlayerMoney", "**Zera** o dinheiro.", `ResetPlayerMoney(playerid);`, "zerar dinheiro"],
   ["SetPlayerHealth", "Muda a **vida** (0.0 a 100.0). 0 mata.", `SetPlayerHealth(playerid, 100.0);`, "dar vida|curar|vida cheia|matar jogador"],
   ["GetPlayerHealth", "Pega a **vida** (guarda numa variável Float por referência).", `new Float:vida;

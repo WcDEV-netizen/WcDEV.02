@@ -187,6 +187,8 @@ const Professor = {
   roteiro(t) {
     if (!/ (quero|queria|vou|como|preciso|bora|quero fazer|quero criar|criar|fazer|montar|abrir) /.test(t)) return null;
     if (!/ (servidor|gamemode|gm|site|pagina|portfolio|jogo|bot|projeto|server|rpg|roleplay|dm|corrida|app|aplicacao|lista) /.test(t)) return null;
+    // "como deixa o fundo da página azul" é pergunta de CSS, não "quero construir um site"
+    if (/ (fundo|cor|centraliz\w*|fonte|borda|sombra|piscar|imagem|botao|margem|alinhar|estourando|menu|link) /.test(t) && !/ (quero|queria|vou|bora|preciso) (fazer|criar|montar|construir|comecar|abrir) /.test(t)) return null;
     const r = this.ROTEIROS.find(x => x.re.test(t));
     if (!r) {
       if (/ (servidor|gamemode|gm|server) /.test(t) && / (quero|queria|vou|bora|pretendo|preciso) /.test(t) && / (fazer|criar|abrir|ter|montar|comecar) /.test(t) &&
@@ -223,7 +225,7 @@ const Professor = {
   // mostra a aula e já passa o desafio dela (no fim da mesma mensagem)
   aulaComDesafio(aula, resposta, n, total) {
     const ex = this.montarDesafio(aula);
-    const topo = `> 📚 Aula ${n} de ${total} da trilha de ${NOMES[aula.lang]}. Lê com calma: no final tem um desafio pra fixar.\n`;
+    const topo = `> 📚 Aula ${n} de ${total} da trilha de ${NOMES[aula.lang]}. Lê com calma: no final tem um desafio pra fixar.\n` + (WCDEV.professorAdaptativo ? WCDEV.professorAdaptativo.cabecalhoAula(aula) : "");
     if (!ex || this.aulaFeita(aula.id)) return { ...resposta, texto: topo + resposta.texto };
     const d = Treino.abrir(ex);
     return {
@@ -255,6 +257,9 @@ const Professor = {
     return null;
   },
   aulaConcluida(ex, avisos, preview) {
+    const PA = WCDEV.professorAdaptativo;
+    if (PA) PA.registrar(ex.aula, ex.lang, true, { ajuda: (ex._dicaVista ? 1 : 0) + (ex._respostaVista ? 2 : 0) });
+    const dom = PA ? PA.estadoAula(ex.aula) : null;
     const p = Treino.progresso;
     p._aulasOk = p._aulasOk || [];
     if (!p._aulasOk.includes(ex.aula)) p._aulasOk.push(ex.aula);
@@ -270,6 +275,7 @@ const Professor = {
     return {
       texto: `### ✅ ${elogio}\nVocê fez o desafio da aula **${ex.aulaTitulo}**. Trilha de ${NOMES[ex.lang]}: ${this.barra(feitas, lista.length)} **${feitas}/${lista.length}** aulas concluídas.` +
         (avisos && avisos.length ? `\n\nSó umas dicas pra ficar ainda melhor:\n${avisos.slice(0, 4).map(a => `- Linha ${a.linha}: ${a.msg}`).join("\n")}` : "") +
+        (dom ? `\n\n**Essa aula agora está:** ${PA.ROTULO[dom.estado]}${dom.estado !== "dominado" ? ` (${PA.porQue(dom)}). Pra ficar **dominada**: acerte de novo outro dia, sem dica (eu te chamo na **/revisao**).` : "."}` : "") +
         (prox ? `\n\n**Próximo passo:** ${prox.titulo} 👉` : `\n\n🎉 Essa era a última aula da trilha de ${NOMES[ex.lang]}!`),
       sugestoes: prox ? ["▶ próximo passo", "teste rápido", "/desafio " + ex.lang] : ["/desafio " + ex.lang, "/missao " + ex.lang, "/boletim"],
       preview,
@@ -326,15 +332,16 @@ const Professor = {
       const vistasL = aulas.filter(a => vistas.includes(a.id)).length;
       const ex = Treino.feitos(l).length, totEx = Treino.lista(l).length;
       const ok = aulas.filter(a => (p._aulasOk || []).includes(a.id)).length;
-      return `- **${NOMES[l]}**: aulas ${this.barra(ok, aulas.length)} ${ok}/${aulas.length} concluídas (${vistasL} vistas) · exercícios ${ex}/${totEx} · desafios ${d[l] || 0}`;
+      const dm = WCDEV.professorAdaptativo ? WCDEV.professorAdaptativo.dominioDaTrilha(l) : null;
+      return `- **${NOMES[l]}**: aulas ${this.barra(ok, aulas.length)} ${ok}/${aulas.length} concluídas (${vistasL} vistas) · exercícios ${ex}/${totEx} · desafios ${d[l] || 0}` + (dm && (dm.dominado + dm.praticando + dm.revisar) ? `\n  domínio: ✅ ${dm.dominado} dominada(s) · 🌱 ${dm.praticando} praticando · 🔁 ${dm.revisar} pra revisar` : "");
     });
     const total = linhas.length;
     const nivel = vistas.length + Object.values(d).reduce((a, b) => a + b, 0) * 2 + (q.certas || 0);
     const titulo = nivel < 10 ? "🌱 Iniciante" : nivel < 30 ? "🔧 Aprendiz" : nivel < 70 ? "⚙️ Programador(a)" : "🚀 Avançado(a)";
     return {
       texto: `### 📊 Seu boletim\nNível: **${titulo}**\n${linhas.join("\n")}\n- **Testes rápidos**: ${q.certas || 0} de ${q.total || 0} certas\n\n` +
-        (vistas.length ? "Continua assim! A constância é o que faz um programador. 💙" : "Ainda não começou nenhuma trilha. Bora? Escolhe uma 👇"),
-      sugestoes: ["continuar de onde parei", "/pawn", "/desafio", "teste rápido"],
+        (vistas.length ? "**Dominada** = acertou o desafio 2+ vezes, em dias diferentes, pelo menos uma sem dica (uma vez só não prova que fixou). Continua assim! 💙" : "Ainda não começou nenhuma trilha. Bora? Escolhe uma 👇"),
+      sugestoes: ["continuar de onde parei", "/revisao", "/modo", "/caca"],
       _total: total,
     };
   },

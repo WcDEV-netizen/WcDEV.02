@@ -608,7 +608,10 @@ WCDEV.refs.push({ lang: "html", grupo: "Atributo", itens: [
   ["aria-label", "Nome do elemento para **leitores de tela** (acessibilidade).", `<button aria-label="Fechar menu">✕</button>`, "aria|acessibilidade"],
   ["role", "Diz o **papel** do elemento pra acessibilidade.", `<div role="alert">Erro ao salvar!</div>`, ""],
   ["accept", "Tipos de arquivo aceitos num {{type=\"file\"}}.", `<input type="file" accept=".pdf,image/*">`, ""],
-  ["action e method", "Pra **onde** e **como** o formulário envia os dados.", `<form action="https://formspree.io/f/SEU_ID" method="POST">`, "enviar formulario|method post|get"],
+  ["action e method", "Pra **onde** e **como** o formulário envia os dados.", `<form action="https://formspree.io/f/SEU_ID" method="POST">
+  <input name="email" type="email">
+  <button>Enviar</button>
+</form>`, "enviar formulario|method post|get"],
   ["srcset", "Várias versões da imagem pra telas diferentes.", `<img src="p.jpg" srcset="p.jpg 480w, g.jpg 1080w" alt="">`, ""],
   ["poster", "**Capa** do vídeo antes de dar play.", `<video src="v.mp4" poster="capa.jpg" controls></video>`, "capa do video|thumbnail"],
 ]});

@@ -77,6 +77,7 @@ function formatar(texto) {
 }
 
 /* ---------- Painel de análise de código e comparação ---------- */
+function escAttr(t) { return escapar(String(t == null ? "" : t)).replace(/"/g, "&quot;"); }
 function inlineSeguro(t) {
   return escapar(String(t || "")).replace(/\{\{(.+?)\}\}(?!\})/g, '<code class="inline">$1</code>').replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 }
@@ -85,32 +86,100 @@ function desenharAnalise(json) {
   try { d = JSON.parse(json); } catch (e) { return `<pre>${escapar(json)}</pre>`; }
   const c = { erro: 0, provavel: 0, verificar: 0, sugestao: 0 };
   d.achados.forEach(a => c[a.nivel]++);
-  const chip = (cls, ic, n, nome) => `<span class="an-chip ${cls}${n ? "" : " zero"}">${ic} ${n} ${nome}</span>`;
-  let h = `<div class="analise" role="region" aria-label="Análise do código">`;
-  h += `<div class="an-topo"><span class="an-titulo">🔬 Análise do código</span><span class="an-meta">${d.linhas} linhas · ${d.regras} regras (v${escapar(d.versao || "")}) · ${d.tempo} ms${d.trecho ? " · trecho (sem o arquivo inteiro)" : ""}</span></div>`;
-  h += `<div class="an-chips">${chip("sintaxe", "⛔", d.sintaxe.length, "sintaxe")}${chip("erro", "❌", c.erro, "confirmados")}${chip("provavel", "⚠️", c.provavel, "prováveis")}${chip("verificar", "🔍", c.verificar, "riscos")}${chip("sugestao", "💡", c.sugestao, "melhorias")}</div>`;
+  const CATS = { compilacao: ["⛔", "Compilação"], logica: ["🐞", "Bug confirmado"], possivel: ["❓", "Possível bug"], seguranca: ["🔒", "Segurança"], desempenho: ["🐢", "Desempenho"], integracao: ["🔗", "Integração"], estilo: ["🎨", "Estilo"], info: ["ℹ️", "Informativo"] };
+  const cats = d.categorias || {};
+  if (!d.categorias) { cats.compilacao = d.sintaxe.length; d.achados.forEach(a => { const k = a.categoria || ({ erro: "logica", provavel: "possivel", verificar: "possivel", sugestao: "estilo" })[a.nivel]; cats[k] = (cats[k] || 0) + 1; }); }
+  const linha = (n, txt, arq) => `<div class="an-linha"><span class="an-n">${arq ? `<small>${escapar(arq)}</small> ` : ""}${n}</span><code>${WCDEV.cores ? WCDEV.cores.colorir(txt || "", "pawn") : escapar(txt || "")}</code></div>`;
+  const id = escapar(d.id || "");
+  let h = `<div class="analise" role="region" aria-label="Análise do código" data-id="${escAttr(d.id || "")}">`;
+  h += `<div class="an-topo"><span class="an-titulo">🔬 ${d.projeto ? `Análise do projeto (${d.projeto.arquivos.length} arquivos)` : "Análise do código"}</span><span class="an-meta">${d.linhas} linhas · ${d.regras} regras (v${escapar(d.versao || "")}) · ${d.tempo} ms${d.arvore === false ? " · sem árvore sintática (código incompleto)" : ""}</span></div>`;
+  // resumo de gravidade (certeza) + filtros por categoria (o que é)
+  h += `<div class="an-grav" aria-label="Resumo de gravidade"><span class="g-e">❌ ${c.erro + d.sintaxe.length} confirmado(s)</span><span class="g-p">⚠️ ${c.provavel} provável(is)</span><span class="g-v">🔍 ${c.verificar} risco(s) potencial(is)</span><span class="g-s">💡 ${c.sugestao} melhoria(s)</span></div>`;
+  h += `<div class="an-chips" role="group" aria-label="Filtrar por categoria"><button class="an-chip on" data-an="filtro" data-cat="" aria-pressed="true">Todos</button>${Object.entries(CATS).filter(([k]) => cats[k]).map(([k, [ic, nome]]) => `<button class="an-chip ${k}" data-an="filtro" data-cat="${k}" aria-pressed="false">${ic} ${cats[k]} ${nome}</button>`).join("")}</div>`;
+  if (d.comparacao) {
+    const cp = d.comparacao;
+    h += `<div class="an-comp" role="note"><b>Comparando com a análise anterior</b> (${escapar(WCDEV.analiseHistorico ? WCDEV.analiseHistorico.quandoTexto(cp.quando) : "")}): <span class="ok">✅ ${cp.resolvidos.length} resolvido(s)</span> · <span class="novo">🆕 ${cp.novos.length} novo(s)</span> · ${cp.continuam} continua(m)` +
+      (cp.resolvidos.length ? `<ul class="an-res">${cp.resolvidos.slice(0, 5).map(t => `<li>✅ ${escapar(t)}</li>`).join("")}</ul>` : "") + (cp.novos.length ? `<ul class="an-res">${cp.novos.slice(0, 5).map(t => `<li>🆕 ${escapar(t)}</li>`).join("")}</ul>` : "") + `</div>`;
+  }
   if (d.cortado || d.puladas) h += `<div class="an-nota">⚠️ ${d.cortado ? "O código era muito grande: analisei só a primeira parte. " : ""}${d.puladas ? `${d.puladas} regra(s) não rodaram pra não travar.` : ""}</div>`;
-  const linha = (n, txt) => `<div class="an-linha"><span class="an-n">${n}</span><code>${WCDEV.cores ? WCDEV.cores.colorir(txt || "", "pawn") : escapar(txt || "")}</code></div>`;
-  for (const x of d.sintaxe) h += `<div class="an-card sintaxe"><div class="an-cab"><span class="an-tag">⛔ Erro de sintaxe</span> Linha ${x.linha}</div>${x.trecho ? linha(x.linha, x.trecho) : ""}<p>${inlineSeguro(x.msg)}</p></div>`;
+  if (d.trecho) h += `<div class="an-nota">📎 Você mandou um <b>trecho</b> (sem o arquivo inteiro): o que está declarado em outro lugar vira <b>risco potencial</b>, nunca "erro confirmado". Pra uma análise completa, mande o arquivo inteiro ou o projeto (<b>/projeto</b>).</div>`;
+  if (d.faltando && d.faltando.length) h += `<div class="an-nota">📎 Faltaram arquivos: ${d.faltando.map(f => `<code class="inline">${escapar(f)}</code>`).join(", ")}. O que estiver neles eu não vejo, então nada que dependa deles é dado como certo.</div>`;
+  if (d.projeto) {
+    const pa = Object.entries(d.projeto.porArquivo || {});
+    h += `<details class="an-card an-proj"><summary><span class="an-tag">🗂 Arquivos</span> ${d.projeto.arquivos.length} arquivo(s), principal: ${d.projeto.principais.map(p => `<code class="inline">${escapar(p)}</code>`).join(", ")}</summary><table class="an-arqs"><thead><tr><th>Arquivo</th><th>❌</th><th>⚠️</th><th>🔍</th></tr></thead><tbody>` +
+      d.projeto.arquivos.map(f => { const x = (d.projeto.porArquivo || {})[f] || {}; return `<tr><td><code>${escapar(f)}</code></td><td>${x.erro || ""}</td><td>${x.provavel || ""}</td><td>${x.verificar || ""}</td></tr>`; }).join("") + `</tbody></table>` +
+      (d.projeto.mapa ? `<p class="an-leg">Mapa: ${d.projeto.mapa.funcoes} funções · ${d.projeto.mapa.comandos} comandos · ${d.projeto.mapa.callbacks} callbacks · ${d.projeto.mapa.globais} variáveis globais · ${d.projeto.mapa.enums} enums${d.projeto.mapa.naoUsadas.length ? ` · stock nunca usadas (o compilador nem olha): ${d.projeto.mapa.naoUsadas.map(n => `<code class="inline">${escapar(n)}</code>`).join(", ")}` : ""}</p>` : "") + `</details>`;
+    void pa;
+  }
+  for (const x of d.sintaxe) h += `<div class="an-card sintaxe" data-cat="compilacao"><div class="an-cab"><span class="an-tag">⛔ Erro de sintaxe</span> <span class="an-l">${x.arquivo ? escapar(x.arquivo) + " · " : ""}Linha ${x.linha}</span> <button class="an-mini" data-an="ir" data-linha="${x.linha}" data-arquivo="${escAttr(x.arquivo || "")}" aria-label="Ir para a linha ${x.linha}">↪ ir</button></div>${x.trecho ? linha(x.linha, x.trecho) : ""}<p>${inlineSeguro(x.msg)}</p></div>`;
   const ICONE = { erro: "❌", provavel: "⚠️", verificar: "🔍", sugestao: "💡" };
   for (const a of d.achados) {
-    h += `<details class="an-card ${a.nivel}"${d.curto ? "" : (a.nivel === "erro" || a.nivel === "provavel" ? " open" : "")}><summary><span class="an-tag">${ICONE[a.nivel]} ${escapar(a.rotulo)}</span> <span class="an-l">Linha ${a.linha}</span> ${inlineSeguro(a.titulo)}</summary>`;
+    const cat = a.categoria || "";
+    h += `<details class="an-card ${a.nivel}" data-cat="${escapar(cat)}"${d.curto ? "" : (a.nivel === "erro" || a.nivel === "provavel" ? " open" : "")}><summary><span class="an-tag">${ICONE[a.nivel]} ${escapar(a.rotulo)}</span>${a.icone ? `<span class="an-cat ${escapar(cat)}">${a.icone} ${escapar(a.rotuloCategoria || "")}</span>` : ""} <span class="an-l">${a.arquivo ? escapar(a.arquivo) + " · " : ""}Linha ${a.linha}</span> ${inlineSeguro(a.titulo)}</summary>`;
     h += linha(a.linha, a.trecho);
     h += `<dl><dt>Por quê</dt><dd>${inlineSeguro(a.porque)}</dd>`;
     if (a.consequencia) h += `<dt>Consequência</dt><dd>${inlineSeguro(a.consequencia)}</dd>`;
     if (a.quando) h += `<dt>Quando acontece</dt><dd>${inlineSeguro(a.quando)}</dd>`;
     h += `<dt>Como corrigir</dt><dd>${inlineSeguro(a.correcao)}</dd>`;
-    h += `<dt>Confiança</dt><dd>${inlineSeguro(a.confianca)}</dd></dl>`;
+    if (a.teste) h += `<dt>Como confirmar</dt><dd>${inlineSeguro(a.teste)}</dd>`;
+    h += `<dt>Confiança e limites</dt><dd>${inlineSeguro(a.limites || a.confianca)}${a.compilador ? ` <span class="an-comp-tag">compilador: ${escapar(a.compilador)}</span>` : ""}</dd></dl>`;
+    if (a.evidencias && a.evidencias.length > 1) h += `<div class="an-ev"><b>Evidências (o caminho do problema):</b>${a.evidencias.map((e, i) => `<div class="an-ev-l"><span class="an-ev-n">${i + 1}</span><button class="an-mini" data-an="ir" data-linha="${e.linha}" data-arquivo="${escAttr(e.arquivo || a.arquivo || "")}">${e.arquivo ? escapar(e.arquivo) + ":" : "linha "}${e.linha}</button> ${escapar(e.texto || "")}${e.trecho ? ` <code>${escapar(e.trecho)}</code>` : ""}</div>`).join("")}</div>`;
     if (a.exemplo) h += `<pre class="an-ex">${WCDEV.cores ? WCDEV.cores.colorir(a.exemplo, "pawn") : escapar(a.exemplo)}</pre>`;
+    h += `<div class="an-acoes"><button class="an-mini" data-an="ir" data-linha="${a.linha}" data-arquivo="${escAttr(a.arquivo || "")}">↪ Ir pra linha</button><button class="an-mini" data-an="copiar" data-texto="${escAttr(a.exemplo || ((a.correcao || "").match(/\{\{(.+?)\}\}(?!\})/) || [])[1] || a.correcao || "")}">📋 Copiar correção</button></div>`;
     h += `</details>`;
   }
+  if (d.total && d.total > d.achados.length) h += `<div class="an-nota">… e mais ${d.total - d.achados.length} item(ns) menores. Corrija os de cima e analise de novo.</div>`;
   for (const inv of d.investigacoes || []) {
     const IC = { ok: "✅", atencao: "⚠️", depende: "❓" };
-    h += `<div class="an-card investigacao"><div class="an-cab"><span class="an-tag">🧭 Investigação</span> ${inlineSeguro(inv.titulo)}</div><ul class="an-check">${inv.itens.map(([s, t]) => `<li class="${s}"><span>${IC[s]}</span><span>${inlineSeguro(t)}</span></li>`).join("")}</ul><p class="an-leg">✅ ok · ⚠️ atenção · ❓ depende do que você quer pro seu servidor</p></div>`;
+    h += `<div class="an-card investigacao" data-cat="info"><div class="an-cab"><span class="an-tag">🧭 Investigação</span> ${inlineSeguro(inv.titulo)}</div><ul class="an-check">${inv.itens.map(([s, t]) => `<li class="${s}"><span>${IC[s]}</span><span>${inlineSeguro(t)}</span></li>`).join("")}</ul><p class="an-leg">✅ ok · ⚠️ atenção · ❓ depende do que você quer pro seu servidor</p></div>`;
   }
-  if (d.avisos && d.avisos.length) h += `<div class="an-card sugestao"><div class="an-cab"><span class="an-tag">📝 Avisos do revisor</span></div><ul>${d.avisos.map(x => `<li>Linha ${x.linha}: ${inlineSeguro(x.msg)}</li>`).join("")}</ul></div>`;
+  if (d.avisos && d.avisos.length) h += `<div class="an-card sugestao" data-cat="estilo"><div class="an-cab"><span class="an-tag">📝 Avisos do revisor</span></div><ul>${d.avisos.map(x => `<li>Linha ${x.linha}: ${inlineSeguro(x.msg)}</li>`).join("")}</ul></div>`;
+  if (!d.curto) h += `<div class="an-rodape"><button class="an-mini" data-an="reanalisar">🔁 Analisar de novo</button><button class="an-mini" data-an="historico">🕘 Histórico</button>${c.erro + c.provavel + d.sintaxe.length ? `<button class="an-mini" data-an="corrigir">🔧 Corrigir</button>` : ""}</div>`;
   return h + "</div>";
 }
+
+/* ações dos painéis (um ouvinte só, pra todos os painéis do chat) */
+function acaoAnalise(b) {
+  const painel = b.closest(".analise");
+  const acao = b.dataset.an;
+  if (acao === "filtro") {
+    const cat = b.dataset.cat;
+    painel.querySelectorAll(".an-chip").forEach(x => { const on = x === b; x.classList.toggle("on", on); x.setAttribute("aria-pressed", on ? "true" : "false"); });
+    painel.querySelectorAll(".an-card[data-cat]").forEach(card => { card.hidden = !!cat && card.dataset.cat !== cat; });
+    return;
+  }
+  if (acao === "copiar") {
+    navigator.clipboard.writeText(b.dataset.texto || "").then(() => { const t = b.textContent; b.textContent = "✔ Copiado"; setTimeout(() => (b.textContent = t), 1500); }).catch(() => {});
+    return;
+  }
+  const H = WCDEV.analiseHistorico;
+  const reg = painel && painel.dataset.id && H ? H.pegar(painel.dataset.id) : null;
+  if (acao === "ir") {
+    const n = +b.dataset.linha, arq = b.dataset.arquivo;
+    if (arq && WCDEV.editor && WCDEV.editor.projeto && WCDEV.editor.projeto.arquivos.has(arq)) { WCDEV.editor.abrir("pawn"); WCDEV.editor.trocarArquivo(arq); WCDEV.editor.irParaLinha(n); return; }
+    const codigo = reg && reg.codigo && !reg.projeto ? reg.codigo : estado.ultimoCodigo && !arq ? estado.ultimoCodigo.codigo : null;
+    if (!codigo) { adicionarMensagem("bot", formatar(arq ? `Pra ir até **${arq}**, abra o projeto no editor (**📁 Projeto**) que eu te levo direto na linha ${n}.` : "Não tenho mais esse código guardado. Cole de novo que eu analiso.")); return; }
+    WCDEV.editor.abrir("pawn");
+    if (WCDEV.editor.area.value !== codigo) WCDEV.editor.colocar(codigo, "pawn");
+    WCDEV.editor.irParaLinha(n);
+    return;
+  }
+  if (acao === "reanalisar" || acao === "corrigir") {
+    // o código atual do editor, se for a continuação deste; senão o código guardado da análise
+    const ed = WCDEV.editor && WCDEV.editor.area && WCDEV.editor.area.value;
+    const doProjeto = reg && reg.projeto && WCDEV.editor && WCDEV.editor.projeto;
+    if (doProjeto) { WCDEV.editor.salvarArquivoAtual && WCDEV.editor.salvarArquivoAtual(); enviar(acao === "corrigir" ? "/projeto corrigir" : "/projeto analisar"); return; }
+    let codigo = reg && reg.codigo ? reg.codigo : estado.ultimoCodigo && estado.ultimoCodigo.codigo;
+    if (ed && codigo && WCDEV.analiseHistorico.parecido(ed, codigo) >= 0.4) codigo = ed;
+    if (!codigo) return;
+    estado.ultimoCodigo = { codigo, lang: "pawn" };
+    enviar(acao === "corrigir" ? "/corrigir" : "/reanalisar");
+    return;
+  }
+  if (acao === "historico") { enviar("/analises"); return; }
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-an]"); if (b && b.closest(".analise")) acaoAnalise(b); });
+
 function desenharDiff(txt) {
   const linhas = txt.split("\n");
   let a = 0, b = 0;
@@ -256,8 +325,11 @@ function atualizarLang(lang) {
 /* ---------- Cérebro: encontra a melhor resposta ---------- */
 
 // sem dizer a linguagem, mas falando de jogador/skin/colete... é Pawn
+// assunto de aparência (cor, centralizar, piscar...) é CSS, mesmo quando a pessoa fala "div" ou "html"
+const ASSUNTO_CSS = / (centraliz\w*|piscar|piscando|fundo|cor de fundo|cor do texto|fonte|borda|sombra|estourando|estoura|vazando|responsiv\w*|espacamento|margem|arredondad\w*) /;
 function langProvavel(t) {
   if (/ (jogador|jogadores|playerid|skin|colete|veiculo|veiculos|viatura|kickar|banir|gamemode|filterscript|textdraw|dialog|checkpoint|pickup|interior|mundo virtual|rcon|server.cfg|callback|zcmd|sscanf|dof2|payday|teleportar) /.test(t)) return "pawn";
+  if (ASSUNTO_CSS.test(t) && estado.lang !== "pawn") return "css";
   if (/ (div|tag|pagina html|<\w+>) /.test(t)) return "html";
   if (/ (console.log|addeventlistener|queryselector|getelementbyid|dom|arrow function|=>|promise|async|await|fetch|localstorage|json.parse|json.stringify|let|const) /.test(t)) return "javascript";
   return null;
@@ -600,6 +672,8 @@ function pareceProgramacao(t) {
 
 /* ---------- Revisão de código colado ---------- */
 function revisarCodigo(codigo, langEscolhida) {
+  const proj = Projeto_doTexto(codigo);
+  if (proj) return analisarProjetoChat(proj);
   const lang0 = langEscolhida || (WCDEV.revisor && WCDEV.revisor.detectar(codigo));
   if (lang0 === "pawn" && WCDEV.analisador) return analisarPawn(codigo);
   const r = WCDEV.revisor && WCDEV.revisor.analisar(codigo, langEscolhida);
@@ -631,14 +705,15 @@ function resumoAnalise(a) {
   c.sintaxe = a.sintaxe.filter(x => x.tipo === "erro").length;
   return c;
 }
-function analisarPawn(codigo) {
+function analisarPawn(codigo, nomeArquivo) {
   const A = WCDEV.analisador;
   const a = A.analisar(codigo, "pawn");
   atualizarLang("pawn");
   estado.ultimoCodigo = { codigo, lang: "pawn" };
   const c = resumoAnalise(a);
   if (WCDEV.motor) WCDEV.motor.passo("Análise", `revisor de sintaxe + ${A.regras.pawn.length} regras de lógica/segurança: ${c.sintaxe} de sintaxe, ${c.erro} confirmado(s), ${c.provavel} provável(is), ${c.verificar} pra verificar, ${c.sugestao} sugestão(ões)`);
-  let texto = A.relatorio(a);
+  const hist = WCDEV.analiseHistorico ? WCDEV.analiseHistorico.registrar({ nome: nomeArquivo || "trecho", codigo, achados: a.achados, sintaxe: a.sintaxe, hash: A.hash(codigo) }) : {};
+  let texto = A.relatorio(a, { id: hist.id, comparacao: hist.comparacao });
   const temCoisa = c.sintaxe + c.erro + c.provavel + c.verificar;
   texto += temCoisa ? "\n\nQuer que eu **aplique as correções**? Toque em **/corrigir** (eu mexo só nas linhas com problema e te mostro cada mudança)." : "\n\nQuer que eu explique o que cada linha faz? Toque em **/explicar**.";
   const botoes = temCoisa ? ["/corrigir", "explica linha por linha"] : ["explica linha por linha", "/desafio pawn"];
@@ -660,7 +735,9 @@ function corrigirPawn(original, r) {
     return { texto: "> 🧠 Não apliquei nenhuma mudança automática: os pontos abaixo dependem de uma decisão sua.\n### 🔬 O que eu achei\n" + A.relatorio(a), sugestoes: ["explica linha por linha", "/editor"] };
   }
   estado.ultimoCodigo = { codigo: final, lang: "pawn" };
-  let texto = `> 🧠 Fiz ${r.mudancas.length ? `**${r.mudancas.length}** correção(ões) de sintaxe e ` : ""}**${c.aplicadas.length}** correção(ões) de lógica/segurança. Mexi **só nas linhas com problema**: o resto do seu código ficou igual. Cada mudança foi revalidada no revisor.\n`;
+  const rv = c.resumoVerificacao || {};
+  let texto = `> 🧠 Fiz ${r.mudancas.length ? `**${r.mudancas.length}** correção(ões) de sintaxe e ` : ""}**${c.aplicadas.length}** correção(ões) de lógica/segurança. Mexi **só nas linhas com problema**: o resto do seu código ficou igual.\n`;
+  texto += `> 🔁 Depois de cada mudança eu **analisei tudo de novo** (não só a sintaxe): problemas sérios ${rv.antes ?? "?"} → **${rv.depois ?? "?"}**, ${rv.novos ? `**${rv.novos} novo(s)** (confira abaixo)` : "nenhum problema novo criado"}.${(c.recusadas || []).length ? ` Recusei ${c.recusadas.length} correção(ões) que criavam outro problema.` : ""}\n`;
   texto += `### 🔧 Código corrigido\n~~~pawn\n${final}\n~~~\n`;
   const df = A.diff(original, final);
   if (df) texto += "~~~diff\n" + df.replace(/~~~/g, "~ ~ ~") + "\n~~~\n";
@@ -670,12 +747,108 @@ function corrigirPawn(original, r) {
   if (pendentes.length) texto += "\n**Não corrigi sozinho (precisa da sua decisão):**\n" + pendentes.slice(0, 6).map(x => `- **Linha ${x.linha}:** ${x.titulo.replace(/\*\*/g, "")} ${x.correcao}`).join("\n") + "\n";
   if (contexto.length) texto += "\n**Fora deste trecho (confira no resto do gamemode):**\n" + contexto.map(x => `- ${x.titulo.replace(/\*\*/g, "")}`).join("\n") + "\n";
   if (restantesSintaxe.length) texto += `\n**Ainda tem erro de sintaxe:**\n${restantesSintaxe.map(e => `- **Linha ${e.linha}:** ${e.msg}`).join("\n")}\n`;
+  if ((c.recusadas || []).length) texto += "\n**Não apliquei (a correção criava outro problema):**\n" + c.recusadas.map(x => `- **Linha ${x.achado.linha}:** ${x.achado.titulo.replace(/\*\*/g, "")} — ${x.motivo}`).join("\n") + "\n";
   texto += "\n⚙️ Eu **não compilei** (não tem compilador Pawn no navegador): compile no Pawno/Qawno pra confirmar.";
   return { texto, sugestoes: ["colocar no editor", "explica linha por linha"] };
 }
 
+/* ---------- Projeto com vários arquivos ---------- */
+// texto colado com "// arquivo: nome.inc" separando os arquivos -> { nome: código }
+function Projeto_doTexto(t) { return WCDEV.projeto && typeof t === "string" ? WCDEV.projeto.separarColado(t) : null; }
+function textoDoProjeto(arquivos) { return Object.entries(arquivos).map(([k, v]) => `// arquivo: ${k}\n${v.replace(/\n+$/, "")}`).join("\n\n"); }
+function analisarProjetoChat(arquivos, res) {
+  const P = WCDEV.projeto;
+  res = res || P.analisar(arquivos);
+  atualizarLang("pawn");
+  estado.ultimoCodigo = { codigo: textoDoProjeto(arquivos), lang: "pawn", arquivos };
+  const hist = WCDEV.analiseHistorico ? WCDEV.analiseHistorico.registrar({ nome: "projeto:" + res.principais.join("+"), arquivos, achados: res.diagnosticos.filter(d => d.regra !== "sintaxe"), sintaxe: res.diagnosticos.filter(d => d.regra === "sintaxe" && d.nivel === "erro").map(d => ({ tipo: "erro" })), hash: WCDEV.analisador.hash(textoDoProjeto(arquivos)) }) : {};
+  const n = res.diagnosticos.filter(d => d.nivel === "erro" || d.nivel === "provavel").length;
+  if (WCDEV.motor) WCDEV.motor.passo("Projeto", `${res.arquivos.length} arquivo(s), principal ${res.principais.join(", ")}, ${res.faltando.length} include(s) faltando, ${res.diagnosticos.length} diagnóstico(s)`);
+  let texto = `> 🧠 Juntei os ${res.arquivos.length} arquivos como o compilador faz (seguindo os {{#include}}) e analisei tudo junto: assim eu vejo o que um arquivo usa do outro.\n` + P.relatorio(res, { id: hist.id, comparacao: hist.comparacao });
+  texto += n ? "\n\nQuer que eu **aplique as correções seguras**? Toque em **/corrigir** (eu mostro o antes/depois de cada arquivo e reverifico o projeto inteiro)." : "";
+  return { texto, sugestoes: n ? ["/corrigir", "/projeto"] : ["/projeto"] };
+}
+function corrigirProjetoChat(arquivos) {
+  const P = WCDEV.projeto;
+  const c = P.corrigir(arquivos);
+  atualizarLang("pawn");
+  if (!c.aplicadas.length) return { texto: "> 🧠 Analisei o projeto inteiro e **não apliquei nada automático**: o que sobrou depende de uma decisão sua (veja o painel).\n" + P.relatorio(c.antes), sugestoes: ["/projeto"] };
+  const novo = Object.fromEntries(c.arquivos);
+  estado.ultimoCodigo = { codigo: textoDoProjeto(novo), lang: "pawn", arquivos: novo };
+  const versao = WCDEV.analiseHistorico ? WCDEV.analiseHistorico.guardarVersao("antes de corrigir o projeto", { tipo: "projeto", arquivos }) : null;
+  const serio = d => d.nivel === "erro" || d.nivel === "provavel";
+  let texto = `> 🧠 Apliquei **${c.aplicadas.length}** correção(ões) em **${c.mudados.length}** arquivo(s) e analisei o **projeto inteiro de novo** depois de cada uma: ${c.depois.diagnosticos.filter(serio).length} problema(s) sério(s) agora (antes: ${c.antes.diagnosticos.filter(serio).length}).${c.recusadas.length ? ` Recusei ${c.recusadas.length} que criavam outro problema.` : ""}\n`;
+  for (const arq of c.mudados) texto += `### 📄 ${arq}\n~~~diff\n${c.diffs[arq].replace(/~~~/g, "~ ~ ~")}\n~~~\n`;
+  texto += "**O que mudou:**\n" + c.aplicadas.map(d => `- **${d.arquivo}, linha ${d.linha}:** ${d.titulo.replace(/\*\*/g, "")}`).join("\n") + "\n";
+  if (c.recusadas.length) texto += "\n**Não apliquei (criava outro problema):**\n" + c.recusadas.map(x => `- ${x.diagnostico.arquivo}:${x.diagnostico.linha} ${x.diagnostico.titulo.replace(/\*\*/g, "")} — ${x.motivo}`).join("\n") + "\n";
+  texto += `\n${versao ? `💾 Guardei a versão de antes (**/versoes**) pra você voltar se quiser. ` : ""}Nada foi salvo no seu PC: copie ou baixe os arquivos corrigidos.\n⚙️ Não compilei (sem compilador no navegador).`;
+  return { texto, sugestoes: ["/projeto", "/versoes"] };
+}
+function comandoProjeto(resto) {
+  const E = WCDEV.editor;
+  const temProjeto = E && E.projeto && E.projeto.arquivos.size;
+  if (temProjeto && /^(analisar|analisa|revisar)?$/i.test(resto.trim())) {
+    E.salvarArquivoAtual();
+    const arquivos = Object.fromEntries(E.projeto.arquivos);
+    const msg = adicionarMensagem("bot", `<div class="an-progresso" role="status"><span>🔬 Analisando o projeto (${E.projeto.arquivos.size} arquivos)…</span> <progress max="1" value="0"></progress> <button class="an-mini an-cancelar">⏹ Cancelar</button></div>`);
+    let cancelou = false;
+    msg.querySelector(".an-cancelar").onclick = () => { cancelou = true; };
+    WCDEV.projeto.analisarAsync(arquivos, {
+      cancelado: () => cancelou,
+      aoProgresso: (i, n, nome) => { const pr = msg.querySelector("progress"); if (pr) { pr.max = n; pr.value = i - 1; } const sp = msg.querySelector("span"); if (sp) sp.textContent = `🔬 Analisando ${nome} (${i}/${n})…`; },
+    }).then(res => {
+      if (res.cancelado) { msg.querySelector(".balao").innerHTML = formatar("⏹ Análise do projeto **cancelada**."); return; }
+      const r = analisarProjetoChat(arquivos, res);
+      msg.querySelector(".balao").innerHTML = formatar(r.texto);
+      if (typeof Historico !== "undefined") Historico.adicionar({ q: "bot", t: r.texto, s: r.sugestoes || [] });
+    }).catch(e => { msg.querySelector(".balao").innerHTML = formatar("Não consegui analisar o projeto: " + e.message); });
+    return null;
+  }
+  if (temProjeto && /^corrig/i.test(resto.trim())) { E.salvarArquivoAtual(); return corrigirProjetoChat(Object.fromEntries(E.projeto.arquivos)); }
+  return { texto: `### 🗂 Analisar um projeto inteiro (vários arquivos)
+Quando o gamemode está dividido em vários arquivos ({{.pwn}} + {{.inc}}), eu junto tudo **como o compilador faz** (seguindo os {{#include}}) e analiso junto. Assim eu acho coisas que um arquivo sozinho não mostra: função criada duas vezes, variável usada antes de existir, comando repetido, dinheiro mudado de um jeito num arquivo e de outro jeito em outro, campo que não é salvo...
+
+**Jeito 1 (PC e celular):** abra o **editor** e toque em **📁 Projeto** → escolha os arquivos (ou a pasta {{gamemodes}}). Depois toque em **🔬 Analisar projeto**.
+**Jeito 2:** cole aqui todos os arquivos, cada um começando com uma linha assim:
+~~~pawn
+// arquivo: gamemode.pwn
+#include <a_samp>
+#include "sistemas/xp.inc"
+...
+// arquivo: sistemas/xp.inc
+stock DarXP(playerid, xp) { ... }
+~~~
+Se faltar um arquivo que é incluído, eu aviso e **não** dou nada que dependa dele como certo.${temProjeto ? `\n\nVocê tem um projeto aberto no editor com **${E.projeto.arquivos.size}** arquivo(s).` : ""}`, sugestoes: temProjeto ? ["/projeto analisar", "/projeto corrigir"] : ["/editor"] };
+}
+function listarAnalises(resto) {
+  const H = WCDEV.analiseHistorico;
+  if (!H) return null;
+  if (/apagar|limpar/i.test(resto || "")) { H.apagarTudo(); return { texto: "🗑 Apaguei o histórico de análises (só deste aparelho)." }; }
+  const l = H.lista().slice().reverse();
+  if (!l.length) return { texto: "Ainda não tem análise guardada. Cole um código Pawn que eu analiso (e da próxima vez comparo o antes e o depois)." };
+  const c = x => `❌ ${x.contagens.erro + x.contagens.sintaxe} · ⚠️ ${x.contagens.provavel} · 🔍 ${x.contagens.verificar}`;
+  return { texto: `### 🕘 Últimas análises (guardadas só neste aparelho)\n` + l.slice(0, 12).map((x, i) => `- **${i + 1}.** ${x.projeto ? "🗂 " : ""}${x.nome.replace(/^projeto:/, "projeto ")} — ${H.quandoTexto(x.quando)} — ${c(x)}`).join("\n") +
+    "\n\nQuando você analisa o **mesmo código de novo** (mesmo arquivo, ou o código corrigido), o painel mostra o que foi **resolvido**, o que é **novo** e o que **continua**.", sugestoes: ["/analises apagar", "/versoes"] };
+}
+function listarVersoes() {
+  const H = WCDEV.analiseHistorico;
+  const v = H ? H.versoes().slice().reverse() : [];
+  if (!v.length) return { texto: "Ainda não tem versão guardada. Eu guardo a versão anterior sempre que uma correção é aplicada no editor ou no projeto." };
+  return { texto: "### 💾 Versões guardadas (as mais novas primeiro)\n" + v.map(x => `- **${x.id}** — ${H.quandoTexto(x.quando)} — ${x.motivo} (${x.conteudo.tipo === "projeto" ? Object.keys(x.conteudo.arquivos).length + " arquivos" : (x.conteudo.codigo || "").split("\n").length + " linhas"})`).join("\n") + "\n\nPra voltar: {{/voltar versao ID}} (vai pro editor; nada é apagado).", sugestoes: [] };
+}
+function voltarVersao(id) {
+  const H = WCDEV.analiseHistorico, E = WCDEV.editor;
+  const v = H && id ? H.versao(id) : null;
+  if (!v) return { texto: "Não achei essa versão. Veja a lista em **/versoes**." };
+  if (v.conteudo.tipo === "projeto") { E.abrirProjeto(v.conteudo.arquivos, "versão " + id); return { texto: `↩ Abri a versão **${id}** do projeto no editor (${Object.keys(v.conteudo.arquivos).length} arquivos).` }; }
+  E.abrir(v.conteudo.lang || "pawn"); E.colocar(v.conteudo.codigo, v.conteudo.lang || "pawn");
+  return { texto: `↩ Coloquei a versão **${id}** no editor.` };
+}
+
 /* ---------- Corrigir e explicar código ---------- */
 function corrigirCodigo(codigo, lang) {
+  const proj = Projeto_doTexto(codigo);
+  if (proj) return corrigirProjetoChat(proj);
   const r = WCDEV.corretor && WCDEV.corretor.corrigir(codigo, lang);
   if (!r) return { texto: "Não consegui descobrir a linguagem desse código. Abra o **editor**, escolha a linguagem e toque em **🔧 Corrigir**.", sugestoes: ["/editor"] };
   if (r.lang === "pawn" && WCDEV.analisador) return corrigirPawn(codigo, r);
@@ -780,7 +953,12 @@ function pensarInterno(entrada) {
   const t0 = normalizar(bruto);
 
   // ===== Comandos =====
-  if (bruto.startsWith("/")) {
+  // caça ao bug em andamento: a resposta (número da linha, /dica, desisto) é pra ela
+  if (estado.caca && WCDEV.professorAdaptativo) { const r = WCDEV.professorAdaptativo.responderCaca(bruto); if (r) return r; }
+  // vários arquivos colados ("// arquivo: x.pwn" ...): é um projeto, não um comando
+  const projetoColado = Projeto_doTexto(bruto);
+  if (projetoColado && Object.keys(projetoColado).some(k => /\.(pwn|inc|p)$/i.test(k))) return analisarProjetoChat(projetoColado);
+  if (bruto.startsWith("/") && !bruto.startsWith("//") && !bruto.startsWith("/*")) {
     const [cmd, arg] = bruto.toLowerCase().split(/\s+/);
     const resto = bruto.slice(cmd.length).trim();
     const langArg = NOMES[arg] ? arg : null;
@@ -828,6 +1006,16 @@ function pensarInterno(entrada) {
     if (cmd === "/porque" || cmd === "/pensamento") return M ? M.explicarRastro() : null;
     if (cmd === "/resumo") return M ? M.resumo() : null;
     if (cmd === "/modelo") return WCDEV.modeloLocal ? WCDEV.modeloLocal.painel() : null;
+    if (cmd === "/reanalisar") { const c = codigoAtual(); if (!c) return { texto: "Não tenho código pra analisar de novo. Cole aqui ou abra no editor." }; return Projeto_doTexto(c.codigo) ? analisarProjetoChat(Projeto_doTexto(c.codigo)) : analisarPawn(c.codigo); }
+    if (cmd === "/analises" || cmd === "/análises") return listarAnalises(resto);
+    if (cmd === "/versoes" || cmd === "/versões") return listarVersoes();
+    if (cmd === "/voltar" && /^vers/i.test(resto)) return voltarVersao(resto.split(/\s+/)[1]);
+    if (cmd === "/projeto") return comandoProjeto(resto);
+    const PA = WCDEV.professorAdaptativo;
+    if (PA && cmd === "/modo") return PA.modos(resto);
+    if (PA && (cmd === "/caca" || cmd === "/caça")) return PA.caca();
+    if (PA && (cmd === "/revisao" || cmd === "/revisão")) return PA.revisao(langArg);
+    if (PA && cmd === "/reiniciar") return PA.reiniciar(resto);
     if (cmd === "/ia") {
       if (!WCDEV.modeloLocal) return null;
       if (!resto) return { texto: "Escreva a pergunta depois: {{/ia como faço um sistema de casas?}}", sugestoes: ["/modelo"] };
@@ -846,6 +1034,9 @@ function pensarInterno(entrada) {
       if (cmd === "/regras") return AP.listarRegras();
       if (cmd === "/feedback") return /export/i.test(resto) ? AP.exportarFeedback() : AP.listarFeedback();
       if (cmd === "/aprendizado" || cmd === "/aprendizagem") return AP.comoAprendo();
+      if (cmd === "/base" && /verific/i.test(resto)) return AP.verificarBase();
+      if (cmd === "/obsoleto") return AP.marcarObsoleto(resto.split(/\s+/)[0]);
+      if (cmd === "/verificar" && /^importad/i.test(resto)) return AP.marcarVerificado(resto.split(/\s+/)[1]);
     }
     if (cmd === "/progresso" || cmd === "/boletim") return WCDEV.professor ? WCDEV.professor.boletim() : Treino.status();
     if (cmd === "/ensinar") return Aprendizado.ensinar(bruto);
@@ -861,6 +1052,8 @@ function pensarInterno(entrada) {
   }
 
   if (t0 === " colocar no editor ") return pensar("/noeditor");
+  if (/^ (caca ao bug|caça ao bug|cacar bug|achar o bug|treinar revisao de codigo) $/.test(t0)) return pensar("/caca");
+  if (/^ (modos?|como quero estudar|modo de estudo) $/.test(t0)) return pensar("/modo");
   if (/^ (desafio desta aula|desafio da aula|fazer o desafio|fazer o desafio da aula|quero o desafio) $/.test(t0)) return pensar("/desafio da aula");
   if (/^ (como (voce|vc) aprende|voce aprende|vc aprende|voce e treinada|voce treina|como funciona seu aprendizado|voce aprende sozinha|voce aprende com a gente) ?$/.test(t0)) return pensar("/aprendizado");
   if (/^ (resume|resumo|resuma|faz um resumo|me da um resumo)( d[ae])?( (a|essa|esta|nossa))?( conversa| papo| que a gente fez| que fizemos)? $|^ o que a gente (fez|viu)( ate agora)? $/.test(t0)) return pensar("/resumo");
@@ -937,7 +1130,8 @@ function pensarInterno(entrada) {
   const pre = WCDEV.cerebro ? WCDEV.cerebro.preprocessar(bruto) : { texto: t0, correcoes: [] };
   const t = pre.texto;
   const intent = WCDEV.cerebro ? WCDEV.cerebro.intencao(t) : "geral";
-  const langDita = detectarLinguagem(t);
+  const langDita0 = detectarLinguagem(t);
+  const langDita = langDita0 === "html" && ASSUNTO_CSS.test(t) ? "css" : langDita0;
   const lang = langDita;
   const provavel = !langDita ? langProvavel(t) : null;
   if (M) {

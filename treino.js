@@ -128,6 +128,7 @@ const Treino = {
       };
     }
 
+    if (ex.daAula && WCDEV.professorAdaptativo) WCDEV.professorAdaptativo.registrar(ex.aula, ex.lang, false, { ajuda: ex._dicaVista ? 1 : 0 });
     let texto = `### 🔧 Quase lá! ${certos}/${ex.testes.length} partes certas\n`;
     if (falhas.length) texto += `O que falta:\n${falhas.map(f => `- ❌ ${f.falta}`).join("\n")}\n`;
     if (erros.length) texto += `\nErros que achei no código:\n${erros.slice(0, 6).map(e => `- **Linha ${e.linha}:** ${e.msg}`).join("\n")}\n`;
@@ -162,6 +163,7 @@ const Treino = {
       this.ativo._dicaVista = true;
       return { texto: `Antes da resposta, tenta com uma dica 😉\n💡 **Dica:** ${this.ativo.dica}\n\nSe ainda travar, manda **/resposta** de novo que eu te mostro a solução inteira.`, sugestoes: ["/resposta", "/editor"] };
     }
+    this.ativo._respostaVista = true;
     if (!this.ativo.solucao) return { texto: "Essa missão não tem uma resposta única: cada um monta do seu jeito. Faça um item do checklist de cada vez e me pergunte o que não souber (ex: \"como usar AddPlayerClass\").", sugestoes: ["/dica"] };
     const aj = this.progresso._ajuda || {};
     aj[this.ativo.lang] = (aj[this.ativo.lang] || 0) + 1;

@@ -206,7 +206,7 @@ const Cerebro = {
       .replace(/^(oi|ola|ei|eai|e ai|opa|professor|prof|wc dev|ia|cara|mano|ae|por favor)\s+/, "")
       .replace(/^(eu\s+)?(quero|queria|preciso|gostaria de|to querendo|estou querendo)\s+(saber|aprender|entender)?\s*/, "")
       .replace(/^(me\s+)?(ensina|ensine|explica|explique|mostra|mostre|fala|diz)\s+(como\s+)?/, "")
-      .replace(/^(como|de que jeito|qual o jeito de|qual a forma de)\s+(eu\s+|que\s+|se\s+)?(faco|fazer|faz|posso|consigo|da|da pra|consegue|usar|uso)?\s*(pra|para|p|um|uma|o|a)?\s*/, "")
+      .replace(/^(como|de que jeito|qual o jeito de|qual a forma de)\s+(eu\s+|que\s+|se\s+)?(faco|fazer|faz|posso|consigo|da|da pra|consegue|usar|uso)?\s*(?:(?:pra|para|p|um|uma|o|a)\s+)?/, "")
       .replace(/^(o que e|o que sao|oque e|que e|pra que serve|para que serve)\s+(o|a|os|as|um|uma)?\s*/, "")
       .replace(/\s+(no|na|em|do|da|com)\s+(samp|sa-mp|pawn|python|html|css|open.mp|gta|servidor)\s*$/, "")
       .replace(/\s+(por favor|pfv|pf|ai|ae|mano|cara)\s*$/, "")

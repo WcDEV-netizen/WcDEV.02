@@ -43,9 +43,15 @@ Pergunte do seu jeito, por exemplo: **"como criar um comando no samp"**, **"como
 - {{/desafio sobre SetPlayerHealth}}: desafio sobre qualquer assunto
 - {{/missao pawn}}: projeto maior com checklist
 - {{/dica}}, {{/resposta}}, {{/pular}}, {{/sair}}: dentro do treino
-- {{/boletim}}: seu progresso nas trilhas (os desafios ficam mais difíceis conforme você vence)
+- {{/boletim}}: seu progresso nas trilhas, com o **domínio** de cada aula (só vira "dominada" com acertos em dias diferentes, sem dica)
+- {{/modo}}: escolha como estudar (do zero, praticar, desafios, analisar código, projetos, revisar pra prova)
+- {{/caca}}: **caça ao bug**, eu escondo um defeito num código certo e você acha a linha
+- {{/revisao}}: revisa o que está na hora (revisão espaçada) · {{/reiniciar pawn}}: começa a trilha do zero
 - Cole qualquer código e eu **reviso** (em Pawn: sintaxe, lógica, segurança e XP/level, separado em *erro confirmado*, *problema provável*, *risco potencial* e *melhoria*); depois **"agora corrige"** conserta sem mexer no resto e mostra o antes/depois, e **"explica linha por linha"** explica
 - **"explica a linha 20"**, **"faz a mesma coisa em Python"**, **"o erro continua"**: eu uso o código da conversa
+- **Projeto inteiro** ({{.pwn}} + {{.inc}}): {{/projeto}} explica como mandar; no editor use **📁 Projeto**. Eu junto os arquivos como o compilador faz e acho problema **entre** arquivos
+- No painel de análise: filtre por categoria, toque em **↪ Ir pra linha**, **📋 Copiar correção**, **🔁 Analisar de novo** (mostra o que foi resolvido)
+- {{/analises}}: histórico das análises · {{/versoes}} e {{/voltar versao ID}}: versões guardadas antes de cada correção
 - Cole a **mensagem de erro** do compilador ou do Python que eu explico a linha
 - **"quero fazer um servidor RPG"**: monto o roteiro de estudo do projeto
 
@@ -65,6 +71,7 @@ Pergunte do seu jeito, por exemplo: **"como criar um comando no samp"**, **"como
 - {{/regra}}: crio uma regra de revisão sua; {{/regras}} lista
 - 👍/👎 nas respostas e {{/feedback}}: vira sugestão de melhoria (eu não me treino sozinha, veja {{/aprendizado}})
 - {{/resumo}}: resumo da conversa
+- {{/base verificar}}: confiro todos os exemplos da base · {{/obsoleto ID}} e {{/verificar importado ID}}: organizam o que você importou
 
 **Modelo local (opcional)**
 - {{/modelo}}: liga um modelo rodando no seu PC (ex: Ollama); {{/ia sua pergunta}} pergunta pra ele. Nada vai pra internet.

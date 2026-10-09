@@ -88,7 +88,11 @@ const Analisador = (() => {
       codigo, limpo, textos, linhas, linhasLimpas, linhaDe, fecha,
       includes: [], includesProprios: [], defines: new Set(), enums: [], membros: new Set(), globais: new Map(), funcoes: [], forwards: new Set(), natives: new Set(),
     };
-    for (const m of codigo.matchAll(/#include\s*([<"])([^>"]+)[>"]/g)) (m[1] === '"' ? ctx.includesProprios : ctx.includes).push(m[2].trim());
+    for (const m of codigo.matchAll(/^[ \t]*#\s*(?:try)?include\s*([<"])([^>"]+)[>"]/gm)) (m[1] === '"' ? ctx.includesProprios : ctx.includes).push(m[2].trim());
+    // includes que a análise de projeto já colocou dentro do código (o arquivo foi fornecido): contam como vistos
+    for (const m of codigo.matchAll(/\/\/ \[wcdev\] incluído: (\S+)/g)) { ctx.includes.push(m[1].replace(/\.(inc|pwn|p)$/i, "").split("/").pop()); ctx.incluidos = (ctx.incluidos || 0) + 1; }
+    // árvore sintática (pawn-ast.js): base das regras de fluxo, estado e projeto
+    try { ctx.ast = WCDEV.pawnAst ? WCDEV.pawnAst.analisarSintaxe(codigo) : null; } catch (e) { ctx.ast = null; }
     for (const m of limpo.matchAll(/#define\s+([A-Za-z_]\w*)/g)) ctx.defines.add(m[1]);
     for (const m of limpo.matchAll(/\bforward\s+(?:\w+:)?(\w+)\s*\(/g)) ctx.forwards.add(m[1]);
     for (const m of limpo.matchAll(/\bnative\s+(?:\w+:)?(\w+)\s*\(/g)) ctx.natives.add(m[1]);
@@ -264,9 +268,10 @@ const Analisador = (() => {
       if (m[1] === "while" && /\}\s*$/.test(ctx.limpo.slice(0, m.index))) continue;   // do { ... } while (...);
       if (/^[ \t]*;/.test(ctx.limpo.slice(pFim + 1))) {
         const L = ctx.linhaDe(m.index);
-        out.push({ nivel: "erro", linha: L, titulo: `Ponto e vírgula logo depois do {{${m[1]}}}`,
-          porque: m[1] === "if" ? "O {{;}} encerra o if ali mesmo: o bloco de baixo roda **sempre**, mesmo quando a condição é falsa." : `O {{;}} vira o corpo do ${m[1]}: o bloco de baixo **não** faz parte do loop` + (m[1] === "while" ? " (e o while pode travar o servidor)." : "."),
-          correcao: "Tire o {{;}} do fim da linha.", correcoes: [{ tipo: "trocar", linha: L, de: /\)\s*;\s*$/, para: ")" }] });
+        out.push({ nivel: "erro", linha: L, titulo: `Ponto e vírgula logo depois do {{${m[1]}}}`, categoria: "compilacao", compilador: "error 036",
+          porque: `O {{;}} vira um comando **vazio** como corpo do ${m[1]}: o bloco de baixo não pertence a ele.`,
+          consequencia: "No Pawn o compilador **recusa** isso: **error 036: empty statement** (em C compilaria e o bloco rodaria sempre; aqui nem compila).",
+          quando: "Ao compilar.", correcao: "Tire o {{;}} do fim da linha.", correcoes: [{ tipo: "trocar", linha: L, de: /\)\s*;\s*$/, para: ")" }] });
       }
     }
     return out;
@@ -288,8 +293,9 @@ const Analisador = (() => {
   // OnPlayerCommandText: if (strcmp(cmdtext, "/x")) sem ! — roda pra todos os OUTROS comandos
   R.push({ id: "strcmp-invertido", modulo: "lógica", verificar(ctx) {
     const out = [];
-    for (const f of ctx.funcoes.filter(f => f.nome === "OnPlayerCommandText")) {
-      for (const m of f.corpo.matchAll(/\bif\s*\(\s*strcmp\s*\(\s*cmdtext\s*,/g)) {
+    for (const f of ctx.funcoes) {
+      const re = f.nome === "OnPlayerCommandText" ? /\bif\s*\(\s*strcmp\s*\(\s*cmdtext\s*,/g : /\bif\s*\(\s*strcmp\s*\(\s*\w+\s*,\s*"[^"]+"[^)]*\)\s*\)/g;
+      for (const m of f.corpo.matchAll(re)) {
         const L = linhaDentro(ctx, f, m.index);
         out.push({ nivel: "provavel", linha: L, titulo: "Comando com a comparação invertida",
           porque: "O {{strcmp}} devolve **0 quando os textos são iguais**. Do jeito que está, esse bloco roda pra **qualquer outro** comando, menos o certo.",
@@ -555,7 +561,11 @@ const Analisador = (() => {
     const PERIGO = /\b(Kick|Ban|BanEx|SendRconCommand|SetPlayerHealth|SetPlayerArmour|GivePlayerWeapon|ResetPlayerWeapons|SetPlayerScore|SetPlayerPos|SetPlayerSkin|SetPlayerInterior|SetPlayerVirtualWorld|TogglePlayerControllable|SetPlayerWantedLevel|GivePlayerMoney|ResetPlayerMoney|SetPlayerName|GameModeExit)\s*\(\s*([A-Za-z_]\w*)/g;
     const PERMISSAO = /IsPlayerAdmin|admin|Admin|ADMIN|adm\b|Adm|nivelAdm|Staff|staff|Mod\b|moderador|Moderador|VIP|vip|Vip|Lider|lider|Cargo|cargo|Permiss|permiss/;
     for (const f of ctx.funcoes.filter(f => f.tipo === "comando")) {
-      if (PERMISSAO.test(f.corpo)) continue;
+      // permissão de verdade = a palavra aparece numa CONDIÇÃO que barra (if ... return), e não em qualquer lugar (ex: Admin[alvo] = nivel)
+      const condicoes = [...f.corpo.matchAll(/\bif\s*\(/g)].map(m => { const ini = m.index + m[0].length - 1, fim = fechaParen(f.corpo, ini); return fim > 0 ? f.corpo.slice(ini, fim + 1) + f.corpo.slice(fim + 1, fim + 60) : ""; });
+      if (condicoes.some(c => PERMISSAO.test(c.split(")")[0] + ")") && /playerid/.test(c) && /\breturn\b/.test(c))) continue;
+      // checagem própria do servidor: if (!TemPerm(playerid, ...)) return / if (Cargo[playerid] < 2) return
+      if (/\bif\s*\(\s*!?\s*(Tem|Pode|Eh|E|Is|Has|Can|Checar|Checa|Verificar|Verifica|Nivel|Level|Perm|Acesso)\w*\s*\(\s*playerid\b/i.test(f.corpo)) continue;
       const acoes = [...f.corpo.matchAll(PERIGO)].filter(m => m[2] !== "playerid" || /^(SendRconCommand|GameModeExit)$/.test(m[1]));
       const global = /\b(SendRconCommand|GameModeExit)\s*\(/.test(f.corpo);
       if (!acoes.length && !global) continue;
@@ -721,10 +731,22 @@ const Analisador = (() => {
     for (const f of ctx.funcoes) {
       if (f.tipo === "comando") continue;   // o comando tem regra própria
       const comValor = /\breturn\s+[^;\s][^;]*;/.test(f.corpo), semValor = /\breturn\s*;/.test(f.corpo);
+      // a árvore sintática decide "termina sem return" com precisão (regra caminho-sem-retorno); aqui só sobra o caso sem árvore
+      const fa = ctx.ast && ctx.ast.funcoes.find(x => x.nome === f.nome && x.linhaNome === f.linha);
+      const arvoreOk = fa && !fa.parcial;
       if (comValor && semValor) out.push({ nivel: "erro", linha: f.linha, titulo: `{{${f.nome}}} mistura {{return valor;}} com {{return;}}`,
-        porque: "Uma função em Pawn ou sempre devolve valor, ou nunca devolve.", consequencia: "O compilador acusa **warning 209** e quem usa o retorno pode receber lixo.",
+        porque: "Uma função em Pawn ou sempre devolve valor, ou nunca devolve.", consequencia: "O compilador acusa **warning 209**; no caminho do {{return;}} a função devolve **0**, e quem usa o retorno recebe 0 sem perceber.",
         quando: "Ao compilar, e quando o caminho do {{return;}} roda.", correcao: "Use {{return 0;}} (ou outro valor) em todos os retornos." });
-      else if (comValor && (!/\breturn\b[^;]*;\s*$/.test(f.corpo.replace(/\s+$/, "")) || /^\s*if\s*\(.*\)\s*return\b[^;]*;\s*$/.test((f.corpo.trim().split("\n").pop() || ""))) && !/^\s*$/.test(f.corpo)) {
+      else if (arvoreOk && comValor && WCDEV.analiseFluxo && WCDEV.analiseFluxo.chegaNoFimSemRetorno(ctx, fa) && f.tipo !== "comando" && f.nome !== "main") {
+        // pela árvore: existe um caminho (if sem else, switch sem default...) que chega na } final sem return
+        out.push({ nivel: fa.callback ? "provavel" : "erro", linha: f.linhaFim, titulo: `{{${f.nome}}} pode chegar no fim **sem devolver valor**`,
+          porque: "Alguns caminhos terminam com {{return valor;}}, mas existe pelo menos um caminho (um {{if}} sem {{else}}, por exemplo) que chega na {{}}} final sem {{return}}.",
+          consequencia: "O compilador avisa (**warning 209**) e compila; nesse caminho a função devolve **0** (testei executando). Se 0 não é o valor certo pra esse caso, quem chama recebe um resultado errado.",
+          quando: "Quando nenhuma das condições com {{return}} é verdadeira.", correcao: "Coloque um {{return}} com o valor certo antes da {{}}} final (ou um {{else}} que retorne).",
+          correcoes: [{ tipo: "inserirAntes", linha: f.linhaFim, linhas: ["    return 0;"] }], compilador: "warning 209",
+          teste: `Chame {{${f.nome}}} com um valor que não entra em nenhum if e imprima o resultado.` });
+      }
+      else if (!arvoreOk && comValor && (!/\breturn\b[^;]*;\s*$/.test(f.corpo.replace(/\s+$/, "")) || /^\s*if\s*\(.*\)\s*return\b[^;]*;\s*$/.test((f.corpo.trim().split("\n").pop() || ""))) && !/^\s*$/.test(f.corpo)) {
         // termina sem return, mas tem return com valor no meio
         const ultimo = f.corpo.replace(/\s+$/, "");
         if (/\}\s*$/.test(ultimo) && /\belse\b/.test(ultimo.slice(-200)) && (ultimo.slice(-200).match(/return/g) || []).length >= 2) continue;   // if/else que retorna nos dois
@@ -843,6 +865,40 @@ const Analisador = (() => {
 
   /* ================= 4. VALIDAÇÃO ================= */
   const ORDEM = { erro: 0, provavel: 1, verificar: 2, sugestao: 3 };
+  // CATEGORIA = o que o problema É; NÍVEL = o quanto eu tenho certeza. São coisas separadas.
+  const CATEGORIA_REGRA = {
+    "if-que-devia-ser-while": "logica", "if-com-ponto-e-virgula": "compilacao", "ou-com-constante": "logica", "strcmp-invertido": "logica", "while-infinito": "logica",
+    "loop-passa-do-limite": "logica", "indice-constante-fora": "compilacao", "format-tamanho": "logica", "mensagem-144": "logica", "nome-pequeno": "logica", "timer-sem-public": "logica",
+    "playerid-sem-validar": "logica", "sscanf-id-sem-validar": "seguranca", "killerid-invalido": "logica", "dialog-sem-id": "logica", "quantidade-negativa": "seguranca",
+    "comando-sem-permissao": "seguranca", "comando-sem-return": "logica", "pode-ficar-negativo": "logica", "dados-salvos": "integracao", "nao-declarado": "integracao",
+    "dependencia-ausente": "integracao", "assinatura-errada": "logica", "retorno-inconsistente": "logica", "variavel-nao-usada": "estilo", "xp-sem-recalculo": "logica",
+    "xp-excedente-perdido": "logica", "loop-sem-conectado": "desempenho",
+  };
+  const CATEGORIAS = {
+    compilacao: ["⛔", "Erro de compilação"], logica: ["🐞", "Bug de lógica confirmado"], possivel: ["❓", "Possível bug"], seguranca: ["🔒", "Risco de segurança"],
+    desempenho: ["🐢", "Desempenho"], integracao: ["🔗", "Integração (arquivos/sistemas)"], estilo: ["🎨", "Estilo"], info: ["ℹ️", "Informativo"],
+  };
+  // como confirmar ou desmentir cada achado (pras regras que não disseram)
+  const TESTE = {
+    "if-que-devia-ser-while": "Chame a função dando XP pra 3 níveis de uma vez e veja quantos níveis subiu.", "ou-com-constante": "Teste com um valor que não devia passar: ele passa.",
+    "strcmp-invertido": "Digite outro comando qualquer: esse bloco roda.", "while-infinito": "Rode com a condição verdadeira: o servidor para de responder.",
+    "loop-passa-do-limite": "Rode com o servidor cheio (ou force o último índice): aparece \"array index out of bounds\".", "indice-constante-fora": "Compile: error 032.",
+    "format-tamanho": "Use um texto grande: outra variável muda sozinha ou o servidor cai.", "mensagem-144": "Envie a mensagem: ela aparece cortada ou não aparece.",
+    "nome-pequeno": "Entre com um nome de 24 letras.", "timer-sem-public": "Coloque um print dentro da função: ele nunca aparece.",
+    "playerid-sem-validar": "Chame a função com INVALID_PLAYER_ID (65535).", "sscanf-id-sem-validar": "Use o comando com um id de alguém offline.",
+    "killerid-invalido": "Morra de queda (sem assassino) e veja o console.", "dialog-sem-id": "Abra outro dialog do servidor e responda: este código roda junto.",
+    "quantidade-negativa": "Chame com um valor negativo.", "comando-sem-permissao": "Use o comando com uma conta sem admin.", "comando-sem-return": "Use o comando: aparece \"Unknown command\".",
+    "pode-ficar-negativo": "Tire mais do que existe e veja o valor.", "dados-salvos": "Mude o valor, saia, entre de novo e confira.", "nao-declarado": "Compile o projeto inteiro: se der error 017 nesse nome, falta declarar.",
+    "dependencia-ausente": "Compile: veja se aparece error 017 (ou, no caso do CMD:, se o comando responde).", "assinatura-errada": "Compile: warning 202 nesta linha.",
+    "retorno-inconsistente": "Compile: warning 209.", "variavel-nao-usada": "Compile: warning 203/204.", "xp-sem-recalculo": "Dê XP pra vários níveis e compare quanto cada nível custou.",
+    "xp-excedente-perdido": "Dê XP a mais que o necessário e veja se o que sobrou ficou.", "loop-sem-conectado": "Meça o tempo do loop com poucos jogadores online.",
+  };
+  const LIMITE = {
+    erro: "Alta: o próprio código mostra o problema (ou o compilador, quando indicado). Limite: eu não executei o seu código.",
+    provavel: "Média: quase sempre é bug, mas pode ser de propósito. Limite: eu não sei a regra do seu servidor; o teste acima tira a dúvida.",
+    verificar: "Baixa: depende de partes do projeto que eu não vi ou da sua intenção. Limite: use o teste acima pra confirmar.",
+    sugestao: "Não é erro: é melhoria.",
+  };
   function validar(achados, ctx, sintaxe) {
     const vistos = new Set();
     const ok = [];
@@ -852,44 +908,67 @@ const Analisador = (() => {
       const chave = a.regra + ":" + a.linha + ":" + a.titulo;
       if (vistos.has(chave)) continue;
       vistos.add(chave);
-      // o revisor de sintaxe já falou disso nessa linha? não repete
       a.trecho = ctx.linhas[a.linha - 1].trim();
+      let cat = a.categoria || CATEGORIA_REGRA[a.regra] || a.categoriaRegra || "logica";
+      if (a.regra === "nao-declarado" && a.nivel === "provavel") cat = "compilacao";
+      if (cat === "logica" && a.nivel !== "erro") cat = "possivel";
+      if (a.nivel === "sugestao" && !["desempenho", "seguranca"].includes(cat)) cat = "estilo";
+      a.categoria = cat;
+      a.teste = a.teste || TESTE[a.regra] || "";
+      a.limites = a.limites || LIMITE[a.nivel];
       ok.push(a);
     }
+    // mesma linha, mesmo problema dito por duas regras: fica o mais certo
+    const final = ok.filter(a => !ok.some(b => b !== a && b.linha === a.linha && ORDEM[b.nivel] < ORDEM[a.nivel] && b.categoria === a.categoria && /retorno|return/i.test(a.titulo + b.titulo) && /retorno|return|valor/i.test(b.titulo)));
     // com erro de sintaxe, a estrutura pode ter sido mal lida: rebaixa "erro" de lógica pra "provável"
-    if (sintaxe.some(s => s.tipo === "erro")) ok.forEach(a => { if (a.nivel === "erro" && !a.compilador) a.nivel = "provavel"; });
-    return ok.sort((a, b) => ORDEM[a.nivel] - ORDEM[b.nivel] || a.linha - b.linha);
+    if (sintaxe.some(s => s.tipo === "erro")) final.forEach(a => { if (a.nivel === "erro" && !a.compilador) a.nivel = "provavel"; });
+    return final.sort((a, b) => ORDEM[a.nivel] - ORDEM[b.nivel] || a.linha - b.linha);
   }
 
   /* ================= API ================= */
   const regras = { pawn: R };
   // versão das regras: muda quando uma regra é criada/alterada (os testes de regressão garantem que nada quebrou)
-  const VERSAO_REGRAS = "2026.10-3";
+  const VERSAO_REGRAS = "2026.10-v2";
   const compilador = null;   // ganchos pra um compilador local de verdade (ver o topo do arquivo)
 
-  function analisar(codigo, lang) {
+  // cache: o mesmo código analisado de novo (reabrir conversa, corrigir, reanalisar) não refaz tudo
+  const cache = new Map();
+  function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36) + ":" + s.length; }
+
+  // opcoes: { arquivoDe(linha) -> "arquivo:linha", faltando: [arquivos], limiteTexto, limiteTempo, semCache }
+  function analisar(codigo, lang, opcoes = {}) {
     lang = lang || (WCDEV.revisor && WCDEV.revisor.detectar(codigo)) || "pawn";
+    const chaveCache = !opcoes.arquivoDe && !opcoes.semCache ? lang + ":" + hash(codigo) : null;
+    if (chaveCache && cache.has(chaveCache)) { const r = cache.get(chaveCache); cache.delete(chaveCache); cache.set(chaveCache, r); return r; }
     const rev = WCDEV.revisor ? WCDEV.revisor.analisar(codigo, lang) : null;
     const sintaxe = rev ? rev.problemas : [];
     if (!regras[lang]) return { lang, sintaxe, achados: [], ctx: null, suportado: false };
     const inicio = Date.now();
-    const LIMITE_TEXTO = 120000, LIMITE_TEMPO = 1500;   // código gigante ou análise lenta: para e avisa
+    const LIMITE_TEXTO = opcoes.limiteTexto || 120000, LIMITE_TEMPO = opcoes.limiteTempo || 1500;   // código gigante ou análise lenta: para e avisa
     const cortado = codigo.length > LIMITE_TEXTO;
     if (cortado) codigo = codigo.slice(0, codigo.lastIndexOf("\n", LIMITE_TEXTO));
     let ctx;
     try { ctx = estrutura(codigo); } catch (e) { return { lang, sintaxe, achados: [], ctx: null, suportado: true, falhou: true }; }
-    const brutos = [], puladas = [];
+    ctx.arquivoDe = opcoes.arquivoDe || null;
+    ctx.faltando = opcoes.faltando || [];
+    if (ctx.faltando.length) ctx.includesProprios.push(...ctx.faltando);
+    const brutos = [], puladas = [], tempos = {};
     for (const regra of regras[lang]) {
       if (Date.now() - inicio > LIMITE_TEMPO) { puladas.push(regra.id); continue; }
-      try { for (const a of regra.verificar(ctx) || []) brutos.push({ ...a, regra: regra.id, modulo: regra.modulo }); }
-      catch (e) { /* uma regra com problema não derruba as outras */ }
+      const t0 = Date.now();
+      try { for (const a of regra.verificar(ctx) || []) brutos.push({ ...a, regra: regra.id, modulo: regra.modulo, categoriaRegra: regra.categoria }); }
+      catch (e) { (ctx.falhasRegras = ctx.falhasRegras || []).push(regra.id + ": " + e.message); }
+      tempos[regra.id] = Date.now() - t0;
     }
     const achados = validar(brutos, ctx, sintaxe);
     let investigacoes = [];
     try { investigacoes = investigarXP(ctx); } catch (e) { investigacoes = []; }
+    try { const est = WCDEV.analiseFluxo && WCDEV.analiseFluxo.investigarEstado(ctx); if (est) investigacoes.push(est); } catch (e) { /* sem checklist */ }
     let compilacao = null;
     if (Analisador.compilador) { try { compilacao = Analisador.compilador(codigo); } catch (e) { compilacao = null; } }
-    return { lang, sintaxe, achados, ctx, suportado: true, compilacao, investigacoes, cortado, puladas, tempo: Date.now() - inicio, nRegras: regras[lang].length };
+    const r = { lang, sintaxe, achados, ctx, suportado: true, compilacao, investigacoes, cortado, puladas, tempo: Date.now() - inicio, tempos, nRegras: regras[lang].length, arvore: !!(ctx.ast && !ctx.ast.erros.length) };
+    if (chaveCache) { cache.set(chaveCache, r); if (cache.size > 20) cache.delete(cache.keys().next().value); }
+    return r;
   }
 
   /* ================= 5. CORREÇÃO ================= */
@@ -906,21 +985,37 @@ const Analisador = (() => {
     }
     return linhas.join("\n");
   }
-  // aplica as correções uma de cada vez; se o revisor achar erro novo, desfaz aquela
+  // aplica as correções uma de cada vez e REVERIFICA tudo:
+  //   - o revisor de sintaxe não pode achar erro novo;
+  //   - a análise completa não pode achar problema sério NOVO (erro/provável que não existia);
+  //   - o problema que motivou a correção tem que sumir (senão a correção só escondeu o aviso).
+  // Se qualquer uma falhar, desfaz aquela correção.
+  const assinatura = a => a.regra + "|" + (a.trecho || "").replace(/\s+/g, " ");
+  const serio = a => a.nivel === "erro" || a.nivel === "provavel";
   function corrigir(codigo, lang, opcoes = {}) {
-    const r = analisar(codigo, lang);
+    const r = analisar(codigo, lang, opcoes.analise || {});
     if (!r.suportado || !r.ctx) return { codigo, aplicadas: [], puladas: r.achados || [], analise: r };
-    const errosAntes = c => (WCDEV.revisor.analisar(c, r.lang) || { problemas: [] }).problemas.filter(p => p.tipo === "erro").length;
-    const base = errosAntes(codigo);
+    const errosSintaxe = c => (WCDEV.revisor.analisar(c, r.lang) || { problemas: [] }).problemas.filter(p => p.tipo === "erro").length;
+    const base = errosSintaxe(codigo);
+    const antes = new Set(r.achados.filter(serio).map(assinatura));
+    const contaRegra = (res, regra) => res.achados.filter(x => x.regra === regra).length;
     const candidatas = r.achados.filter(a => a.correcoes && a.correcoes.length && (a.nivel === "erro" || a.nivel === "provavel" || (a.seguro && opcoes.incluirSeguras !== false)));
-    let atual = codigo, aplicadas = [];
+    let atual = codigo, aplicadas = [], recusadas = [];
     // todas as correções usam as linhas do código ORIGINAL: aplica juntas, depois valida uma a uma
     const tentar = lista => aplicar(codigo, lista.flatMap(a => a.correcoes));
     for (const a of candidatas) {
       const teste = tentar([...aplicadas, a]);
-      if (errosAntes(teste) <= base) { aplicadas.push(a); atual = teste; }
+      if (errosSintaxe(teste) > base) { recusadas.push({ achado: a, motivo: "criava erro de sintaxe" }); continue; }
+      const depois = analisar(teste, r.lang, { ...(opcoes.analise || {}), semCache: true });
+      const novos = depois.achados.filter(x => serio(x) && !antes.has(assinatura(x)) && x.regra !== a.regra);
+      if (novos.length) { recusadas.push({ achado: a, motivo: `criava outro problema: ${novos[0].titulo.replace(/\{\{|\}\}|\*\*/g, "")}` }); continue; }
+      a.resolveu = contaRegra(depois, a.regra) < contaRegra(r, a.regra) || a.regra === "if-que-devia-ser-while";
+      aplicadas.push(a);
+      atual = teste;
     }
-    return { codigo: atual, aplicadas, puladas: r.achados.filter(a => !aplicadas.includes(a)), analise: r };
+    const final = aplicadas.length ? analisar(atual, r.lang, { ...(opcoes.analise || {}), semCache: true }) : r;
+    return { codigo: atual, aplicadas, recusadas, puladas: r.achados.filter(a => !aplicadas.includes(a)), analise: r, depois: final,
+      resumoVerificacao: { antes: r.achados.filter(serio).length, depois: final.achados.filter(serio).length, novos: final.achados.filter(x => serio(x) && !antes.has(assinatura(x))).length } };
   }
 
   /* ================= RELATÓRIO ================= */
@@ -946,6 +1041,17 @@ const Analisador = (() => {
     erro: ["❌", "Erro confirmado", "Erros confirmados"], provavel: ["⚠️", "Problema provável", "Problemas prováveis"],
     verificar: ["🔍", "Risco potencial", "Riscos potenciais (dependem do projeto)"], sugestao: ["💡", "Melhoria recomendada", "Melhorias recomendadas"],
   };
+  // um achado no formato do painel (também usado pela análise de projeto)
+  function paraPainel(a, linhaDe) {
+    const cat = CATEGORIAS[a.categoria] || CATEGORIAS.logica;
+    return {
+      nivel: a.nivel, rotulo: ROTULO[a.nivel][1], linha: a.linha, titulo: a.titulo, trecho: a.trecho, modulo: a.modulo, regra: a.regra,
+      categoria: a.categoria, rotuloCategoria: cat[1], icone: cat[0], arquivo: a.arquivo || "",
+      porque: a.porque, consequencia: a.consequencia || "", quando: a.quando || QUANDO[a.regra] || "", correcao: a.correcao, exemplo: a.exemplo || "",
+      confianca: CONFIANCA[a.nivel], limites: a.limites || "", teste: a.teste || "", compilador: a.compilador || "",
+      evidencias: (a.evidencias || []).slice(0, 6).map(e => ({ linha: e.linha, texto: e.texto, arquivo: e.arquivo || "", trecho: e.trecho || (linhaDe && linhaDe(e.linha) ? String(linhaDe(e.linha)).trim().slice(0, 90) : "") })),
+    };
+  }
   // monta um bloco ~~~analise (JSON) que a interface desenha como painel; o texto fica salvo na conversa
   function relatorio(r, opcoes = {}) {
     const { achados, sintaxe, ctx } = r;
@@ -955,11 +1061,9 @@ const Analisador = (() => {
       trecho: !!(ctx && !ctx.completo), cortado: !!r.cortado, puladas: (r.puladas || []).length,
       sintaxe: sintaxe.filter(x => x.tipo === "erro").slice(0, 10).map(x => ({ linha: x.linha, msg: x.msg, trecho: ctx && ctx.linhas[x.linha - 1] ? ctx.linhas[x.linha - 1].trim() : "" })),
       avisos: sintaxe.filter(x => x.tipo !== "erro" && !/main\(\)/.test(x.msg) && !achados.some(a => a.linha === x.linha && a.regra === "strcmp-invertido" && /strcmp/.test(x.msg))).slice(0, 6).map(x => ({ linha: x.linha, msg: x.msg })),
-      achados: achados.slice(0, opcoes.max || 14).map(a => ({
-        nivel: a.nivel, rotulo: ROTULO[a.nivel][1], linha: a.linha, titulo: a.titulo, trecho: a.trecho, modulo: a.modulo,
-        porque: a.porque, consequencia: a.consequencia || "", quando: a.quando || QUANDO[a.regra] || "", correcao: a.correcao, exemplo: a.exemplo || "",
-        confianca: CONFIANCA[a.nivel],
-      })),
+      achados: achados.slice(0, opcoes.max || 14).map(a => paraPainel(a, l => ctx && ctx.linhas[l - 1])),
+      categorias: Object.fromEntries(Object.keys(CATEGORIAS).map(k => [k, achados.filter(a => a.categoria === k).length + (k === "compilacao" ? sintaxe.filter(x => x.tipo === "erro").length : 0)])),
+      faltando: ctx && ctx.faltando ? ctx.faltando : [], projeto: opcoes.projeto || null, arvore: !!r.arvore, id: opcoes.id || "", comparacao: opcoes.comparacao || null, total: achados.length,
       investigacoes: opcoes.curto ? [] : (r.investigacoes || []),
       compilou: r.compilacao ? r.compilacao.resumo : null,
     };
@@ -995,7 +1099,7 @@ const Analisador = (() => {
     return out.join("\n");
   }
 
-  return { VERSAO_REGRAS, analisar, corrigir, relatorio, relatorioTexto, diff, estrutura, limpar, regras, compilador, aplicar, ROTULO };
+  return { VERSAO_REGRAS, analisar, corrigir, relatorio, relatorioTexto, diff, estrutura, limpar, regras, compilador, aplicar, ROTULO, CATEGORIAS, hash, paraPainel };
 })();
 
 WCDEV.analisador = Analisador;
