@@ -127,6 +127,33 @@ const Desafios = {
           solucao: `n = ${n}\nwhile n > 0:\n    print(n)\n    n -= 1\nprint("Fim!")` }; },
     ],
 
+    javascript: [
+      (D) => { const f = D.sorteia(["JavaScript é demais!", "Eu sei programar!", "WC DEV no topo!"]);
+        return { nivel: 1, titulo: "Primeira frase", enunciado: `Mostre no Console: **${f}**`, dica: `{{console.log("${f}");}}`,
+          testes: [{ re: new RegExp(`console\\.log\\s*\\(\\s*["'\`]${D.re(f)}["'\`]\\s*\\)`), falta: `Use {{console.log("${f}");}}` }], solucao: `console.log("${f}");` }; },
+      (D) => { const a = D.num(1, 5), b = D.num(8, 15);
+        return { nivel: 1, titulo: `Contar de ${a} a ${b}`, enunciado: `Use um **for** pra mostrar os números de **${a} até ${b}** no Console.`, dica: `{{for (let i = ${a}; i <= ${b}; i++)}}`,
+          testes: [{ re: new RegExp(`for\\s*\\(\\s*let\\s+(\\w+)\\s*=\\s*${a}\\s*;\\s*\\1\\s*(<=\\s*${b}|<\\s*${b + 1})\\s*;`), falta: `Comece em ${a} e vá até ${b}: {{for (let i = ${a}; i <= ${b}; i++)}}` },
+            { re: /console\.log\s*\(/, falta: "Mostre com {{console.log}} dentro do for." }],
+          solucao: `for (let i = ${a}; i <= ${b}; i++) {\n  console.log(i);\n}` }; },
+      (D) => { const nome = D.sorteia(["triplo", "dobro", "quadrado"]), k = { triplo: "x * 3", dobro: "x * 2", quadrado: "x * x" }[nome], t = D.num(3, 9);
+        return { nivel: 2, titulo: `Função ${nome}`, enunciado: `Crie a arrow function **${nome}** que recebe **x** e **retorna** o ${nome} de x. Mostre {{${nome}(${t})}}.`,
+          dica: `{{const ${nome} = (x) => ${k};}}`,
+          testes: [{ re: new RegExp(`(const|let)\\s+${nome}\\s*=\\s*\\(?\\s*\\w+\\s*\\)?\\s*=>|function\\s+${nome}\\s*\\(`), falta: `Crie {{const ${nome} = (x) => ...}}` },
+            { re: new RegExp(`${nome}\\s*\\(\\s*${t}\\s*\\)`), falta: `Mostre {{console.log(${nome}(${t}));}}` }],
+          solucao: `const ${nome} = (x) => ${k};\nconsole.log(${nome}(${t}));` }; },
+      (D) => { const n = D.num(10, 30);
+        return { nivel: 2, titulo: "Filtrar pares", enunciado: `Crie um array com os números de 1 a ${n} (pode usar um for com push) e use **filter** pra mostrar só os **pares**.`,
+          dica: "{{const pares = numeros.filter(x => x % 2 === 0);}}",
+          testes: [{ re: /\.push\s*\(|Array\.from|\[\s*1\s*,/, falta: "Monte o array (ex: com {{for}} e {{push}})." }, { re: /\.filter\s*\(/, falta: "Use {{.filter(...)}}." }, { re: /%\s*2\s*===\s*0/, falta: "Par: {{x % 2 === 0}}." }],
+          solucao: `const numeros = [];\nfor (let i = 1; i <= ${n}; i++) numeros.push(i);\nconst pares = numeros.filter(x => x % 2 === 0);\nconsole.log(pares);` }; },
+      (D) => { const item = D.sorteia(["espada", "escudo", "poção"]), preco = D.num(5, 50) * 10;
+        return { nivel: 3, titulo: "Loja com objeto", enunciado: `Crie o objeto {{jogador}} com {{dinheiro: 1000}} e a função {{comprar(preco)}}: se tiver dinheiro, desconta e mostra **"Comprou!"**; senão mostra **"Sem dinheiro"**. Compre a **${item}** por **${preco}**.`,
+          dica: "{{if (jogador.dinheiro >= preco) { jogador.dinheiro -= preco; ... } else { ... }}}",
+          testes: [{ re: /jogador\s*=\s*\{[^}]*dinheiro\s*:\s*1000/, falta: "Crie {{const jogador = { dinheiro: 1000 };}}" }, { re: /(function\s+comprar\s*\(|comprar\s*=\s*\(?)/, falta: "Crie a função {{comprar(preco)}}." },
+            { re: /jogador\.dinheiro\s*>=\s*\w+/, falta: "Confira o dinheiro: {{jogador.dinheiro >= preco}}." }, { re: /jogador\.dinheiro\s*-=\s*\w+/, falta: "Desconte: {{jogador.dinheiro -= preco;}}" }, { re: new RegExp(`comprar\\s*\\(\\s*${preco}\\s*\\)`), falta: `Compre: {{comprar(${preco});}}` }],
+          solucao: `const jogador = { dinheiro: 1000 };\n\nfunction comprar(preco) {\n  if (jogador.dinheiro >= preco) {\n    jogador.dinheiro -= preco;\n    console.log("Comprou!");\n  } else {\n    console.log("Sem dinheiro");\n  }\n}\n\ncomprar(${preco});` }; },
+    ],
     html: [
       (D) => { const t = D.sorteia(["Bem-vindo", "Meu Servidor", "WC DEV"]);
         return { nivel: 1, titulo: "Título e texto", enunciado: `Crie um **h1** escrito **${t}** e um **parágrafo** com qualquer texto.`, dica: `{{<h1>${t}</h1>}} e {{<p>...</p>}}`,
@@ -204,7 +231,7 @@ const Desafios = {
     if (!possiveis.length) return null;
     testes.length = 0;
     testes.push(...possiveis);
-    const contexto = { pawn: "dentro de um comando ou callback", python: "num programinha", html: "numa página", css: "estilizando algum elemento" }[lang];
+    const contexto = { pawn: "dentro de um comando ou callback", python: "num programinha", html: "numa página", css: "estilizando algum elemento", javascript: "num programinha (pode usar o Console)" }[lang];
     return {
       lang, gerado: true, nivel: 2, titulo: `Desafio: usar ${nome}`,
       enunciado: `Escreva um código **seu** usando **${nome}** ${contexto}. Invente uma situação, tipo um comando ou programa que faça sentido.\nEu vou conferir se você usou certo e se não tem erro.`,
@@ -259,6 +286,14 @@ const Desafios = {
           [/perguntas\s*=\s*\[|perguntas\s*=\s*\{/, "Uma lista/dicionário de {{perguntas}}"], [/for\s+\w+.*\s+in\s+/, "Percorrer as perguntas com {{for}}"],
           [/input\s*\(/, "Pedir a resposta"], [/\.lower\s*\(\s*\)|\.strip\s*\(\s*\)/, "Ignorar maiúsculas/espaços ({{lower}} ou {{strip}})"],
           [/pontos\s*\+=|acertos\s*\+=/, "Contar os acertos"], [/print\s*\(\s*f?["'].*(pontos|acertos)/, "Mostrar a pontuação final"],
+        ] },
+    ],
+    javascript: [
+      { titulo: "Missão: contador com botões", enunciado: "Monte um **contador** na página (use o HTML de teste: tem {{#titulo}}, {{#btn}} e {{#lista}}):",
+        itens: [
+          [/let\s+\w+\s*=\s*0/, "Uma variável {{let contador = 0}}"], [/querySelector\s*\(|getElementById\s*\(/, "Pegar elementos da página"],
+          [/addEventListener\s*\(\s*["'`]click/, "Um evento de {{click}}"], [/\+\+|\+=\s*1/, "Somar 1 a cada clique"],
+          [/textContent\s*=/, "Mostrar o valor com {{textContent}}"], [/localStorage\.setItem/, "Salvar no {{localStorage}}"], [/localStorage\.getItem/, "Carregar ao abrir a página"],
         ] },
     ],
     html: [

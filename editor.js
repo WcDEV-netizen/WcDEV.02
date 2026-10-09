@@ -14,7 +14,7 @@ const Editor = {
   painel: null, area: null, linhas: null, cores: null, lang: null, exercicio: null, preview: null,
   auto: null, status: {}, problemas: [], linhaAtual: -1, fonte: 14,
   BASE_CSS: `<h1>Título</h1><p>Um parágrafo de exemplo.</p><button class="botao">Botão</button><div class="caixa card">Caixa</div>`,
-  EXT: { pawn: "pwn", python: "py", html: "html", css: "css" },
+  EXT: { pawn: "pwn", python: "py", html: "html", css: "css", javascript: "js" },
 
   /* ================= MODELOS PRONTOS ================= */
   // $0 = onde o cursor fica depois de inserir
@@ -54,6 +54,17 @@ const Editor = {
       ["form", "Formulário", "<form>\n    <label>Nome <input type=\"text\" name=\"nome\" required></label>\n    <label>E-mail <input type=\"email\" name=\"email\"></label>\n    <button type=\"submit\">Enviar</button>$0\n</form>"],
       ["table", "Tabela", "<table>\n    <tr><th>Nome</th><th>Nível</th></tr>\n    <tr><td>$0</td><td></td></tr>\n</table>"],
       ["btn", "Botão", "<button class=\"botao\">$0</button>"],
+    ],
+    javascript: [
+      ["log", "console.log", "console.log($0);"],
+      ["fn", "Função", "function $[nome](parametro) {\n    \n    return parametro;\n}"],
+      ["af", "Arrow function", "const $[nome] = (x) => $0;"],
+      ["for", "for de 0 a N", "for (let i = 0; i < $[10]; i++) {\n    \n}"],
+      ["forof", "for...of", "for (const item of $[lista]) {\n    console.log(item);\n}"],
+      ["if", "if / else", "if ($0) {\n    \n} else {\n    \n}"],
+      ["clique", "Evento de clique", "document.querySelector(\"$[#botao]\").addEventListener(\"click\", () => {\n    \n});"],
+      ["async", "Função async", "async function $[carregar]() {\n    try {\n        \n    } catch (erro) {\n        console.log(erro.message);\n    }\n}"],
+      ["try", "try / catch", "try {\n    $0\n} catch (erro) {\n    console.log(erro.message);\n}"],
     ],
     css: [
       ["flex", "Centralizar com flex", "display: flex;\njustify-content: center;\nalign-items: center;$0"],
@@ -179,6 +190,8 @@ const Editor = {
     this.area.value = "";
     this.atualizar();
     this.esconderPreview();
+    // desafio da aula no celular: deixa ler a aula primeiro (o editor abre quando tocar em ✍️ Editor)
+    if (ex.daAula && this.noCelular()) { this.atualizarBotoes(); return; }
     this.abrir(ex.lang);
   },
   fecharExercicio() {
@@ -206,9 +219,48 @@ const Editor = {
     this.abrir(this.lang.value);
   },
 
+  /* ---------- rodar JavaScript ISOLADO ----------
+     Sem DOM: roda num Web Worker (outra thread) com tempo limite: loop infinito não trava a página.
+     Com DOM (document/window): roda num iframe sandbox SEM acesso à página do WC DEV. */
+  executarJs() {
+    const codigo = this.area.value;
+    this.preview.hidden = false;
+    document.getElementById("btnVer").textContent = "🙈 Esconder resultado";
+    const frame = this.preview.querySelector("iframe");
+    const usaPagina = /\b(document|window|alert|localStorage)\b/.test(codigo);
+    const htmlBase = (Treino.ativo && Treino.ativo.htmlBase) || '<h1 id="titulo">Título</h1><p class="texto">Parágrafo</p><button id="btn">Botão</button><ul id="lista"></ul>';
+    const mostrar = (linhas, aviso) => {
+      frame.setAttribute("sandbox", "");
+      frame.srcdoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font:13px/1.5 ui-monospace,Consolas,monospace;margin:10px;background:#0b0f1a;color:#cfe1ff}.e{color:#ff8fa3}.a{color:#ffd27a}.n{color:#7d8bab}</style></head><body>${aviso ? `<div class="a">${aviso}</div>` : ""}${linhas.map(l => `<div class="${l.t}">${l.s.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div>`).join("") || '<div class="n">(nada foi mostrado no console)</div>'}</body></html>`;
+    };
+    if (usaPagina) {
+      // console no fim da página de teste, dentro do iframe isolado
+      frame.setAttribute("sandbox", "allow-scripts");
+      const ponte = `<script>(function(){const box=document.createElement('pre');box.id='__console';box.style.cssText='background:#0b0f1a;color:#cfe1ff;padding:8px;border-radius:8px;font:12px ui-monospace,monospace;white-space:pre-wrap;margin-top:12px';const f=v=>{try{return typeof v==='object'?JSON.stringify(v):String(v)}catch(e){return String(v)}};const add=(t,c)=>{if(!box.isConnected)document.body.appendChild(box);const d=document.createElement('div');d.textContent=t;if(c)d.style.color=c;box.appendChild(d)};console.log=(...a)=>add(a.map(f).join(' '));console.error=(...a)=>add(a.map(f).join(' '),'#ff8fa3');console.assert=(ok,...a)=>{if(!ok)add('Assertion failed: '+a.map(f).join(' '),'#ff8fa3')};window.onerror=(m,s,l)=>{add('❌ '+m+' (linha '+(l-1)+')','#ff8fa3');return true};})();<\/script>`;
+      frame.srcdoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;margin:12px;color:#111;background:#fff}</style>${ponte}</head><body>${htmlBase}<script>\n${codigo.replace(/<\/script/gi, "<\\/script")}\n<\/script></body></html>`;
+      return;
+    }
+    if (typeof Worker === "undefined" || typeof Blob === "undefined") return mostrar([], "Este navegador não consegue rodar o código isolado.");
+    if (this._worker) this._worker.terminate();
+    const prelude = `const __f=v=>{try{return typeof v==='object'&&v!==null?JSON.stringify(v):String(v)}catch(e){return String(v)}};const __o=(t)=>(...a)=>postMessage({t,s:a.map(__f).join(' ')});console.log=__o('');console.info=__o('');console.warn=__o('a');console.error=__o('e');console.assert=(ok,...a)=>{if(!ok)postMessage({t:'e',s:'Assertion failed: '+a.map(__f).join(' ')})};self.fetch=()=>Promise.reject(new Error('fetch está desligado aqui (o código roda isolado, sem internet)'));self.addEventListener('unhandledrejection',e=>postMessage({t:'e',s:'❌ '+(e.reason&&e.reason.message||e.reason)}));`;
+    const fonte = prelude + "\ntry {\n" + codigo + "\n} catch (e) { postMessage({ t: 'e', s: '❌ ' + e.name + ': ' + e.message }); }\nsetTimeout(() => postMessage({ t: '__fim' }), 0);";
+    let url;
+    try { url = URL.createObjectURL(new Blob([fonte], { type: "text/javascript" })); } catch (e) { return mostrar([], "Não consegui preparar a execução."); }
+    const w = new Worker(url);
+    this._worker = w;
+    const linhas = [];
+    let fim = null;
+    const encerrar = aviso => { clearTimeout(fim); w.terminate(); URL.revokeObjectURL(url); if (this._worker === w) this._worker = null; mostrar(linhas, aviso); };
+    w.onmessage = e => { if (e.data.t === "__fim") { clearTimeout(fim); fim = setTimeout(() => encerrar(), 1200); return; } if (linhas.length < 500) linhas.push(e.data); };
+    w.onerror = e => { linhas.push({ t: "e", s: "❌ " + e.message + (e.lineno ? ` (linha ${e.lineno - 2})` : "") }); e.preventDefault(); encerrar(); };
+    fim = setTimeout(() => encerrar("⏱️ Parei depois de 3 segundos: o código pode ter um loop infinito (ou estava esperando algo demorado)."), 3000);
+    mostrar([], "▶ Rodando...");
+  },
+
   verResultado() {
     const lang = this.lang.value;
     const codigo = this.area.value;
+    if (lang === "javascript") return this.executarJs();
     let html = codigo;
     if (lang === "css") html = ((Treino.ativo && Treino.ativo.base) || this.BASE_CSS) + `<style>${codigo}</style>`;
     this.preview.hidden = false;
@@ -224,8 +276,9 @@ const Editor = {
 
   atualizarBotoes() {
     const l = this.lang.value;
-    const visual = ["html", "css"].includes(l);
+    const visual = ["html", "css", "javascript"].includes(l);
     document.getElementById("btnVer").hidden = !visual;
+    if (!this.preview || this.preview.hidden) document.getElementById("btnVer").textContent = l === "javascript" ? "▶ Executar" : "👁 Ver resultado";
     document.getElementById("btnEnviarResposta").hidden = !Treino.ativo;
     if (!visual) this.esconderPreview();
     this.area.placeholder = {
@@ -233,6 +286,7 @@ const Editor = {
       python: "# escreva seu código Python aqui\n# dica: digite \"def\" e aperte Tab ✨",
       html: "<!-- escreva seu HTML aqui -->\n<!-- dica: digite \"html\" e aperte Tab ✨ -->",
       css: "/* escreva seu CSS aqui */\n/* dica: digite \"card\" e aperte Tab ✨ */",
+      javascript: "// escreva seu JavaScript aqui e toque em ▶ Executar\n// dica: digite \"log\" e aperte Tab ✨",
     }[l];
     this.status.arquivo.textContent = "main." + this.EXT[l];
     this.status.info.textContent = NOMES[l];
@@ -259,7 +313,7 @@ const Editor = {
       }
       this.sincronizarRolagem();
       this.mostrarPosicao();
-      if (!this.preview.hidden) { clearTimeout(this._tp); this._tp = setTimeout(() => this.verResultado(), 500); }
+      if (!this.preview.hidden && this.lang.value !== "javascript") { clearTimeout(this._tp); this._tp = setTimeout(() => this.verResultado(), 500); }
     });
     clearTimeout(this._tl);
     this._tl = setTimeout(() => this.checarErros(), 800);
@@ -294,6 +348,14 @@ const Editor = {
     else {
       const r = WCDEV.revisor.analisar(v, this.lang.value);
       this.problemas = r ? r.problemas : [];
+      // Pawn: também a análise de lógica/segurança (só o que é confirmado ou provável, pra não poluir)
+      if (this.lang.value === "pawn" && WCDEV.analisador) {
+        const a = WCDEV.analisador.analisar(v, "pawn");
+        a.achados.filter(x => x.nivel === "erro" || x.nivel === "provavel").forEach(x => {
+          if (!this.problemas.some(p => p.linha === x.linha)) this.problemas.push({ linha: x.linha, tipo: x.nivel === "erro" ? "erro" : "aviso", msg: `${x.titulo}. ${x.correcao}` });
+        });
+        this.problemas.sort((a, b) => a.linha - b.linha);
+      }
     }
     const mapa = {};
     this.problemas.forEach(p => { if (mapa[p.linha] !== "erro") mapa[p.linha] = p.tipo === "erro" ? "erro" : "aviso"; });
@@ -386,7 +448,7 @@ const Editor = {
     return { ini, fim, texto: v.slice(ini, fim) };
   },
   comentar() {
-    const marca = { pawn: "//", python: "#", css: null, html: null }[this.lang.value];
+    const marca = { pawn: "//", python: "#", css: null, html: null, javascript: "//" }[this.lang.value];
     const { ini, fim, texto } = this.linhasSelecionadas();
     let novo;
     if (marca) {
@@ -518,6 +580,7 @@ const Editor = {
       python: "def class return import from while for if elif else try except finally with as lambda True False None print input range len self",
       html: "div span section header footer main article nav p h1 h2 h3 a img ul ol li button form input label table",
       css: "display position color background margin padding border width height font-size flex grid justify-content align-items gap",
+      javascript: "const let function return if else for while switch case break continue async await try catch new class true false null undefined console document addEventListener querySelector getElementById textContent length push map filter forEach reduce JSON localStorage setTimeout",
     }[l].split(" ");
     kws.forEach(k => add(k, "palavra", ""));
     this._dic = [...itens.values()];
@@ -733,7 +796,7 @@ const Editor = {
     if (!arq) return;
     if (arq.size > 2 * 1024 * 1024) { this.aviso("Arquivo grande demais (máx. 2 MB)"); return; }
     const ext = (arq.name.split(".").pop() || "").toLowerCase();
-    const lang = { pwn: "pawn", inc: "pawn", p: "pawn", py: "python", html: "html", htm: "html", css: "css" }[ext];
+    const lang = { pwn: "pawn", inc: "pawn", p: "pawn", py: "python", html: "html", htm: "html", css: "css", js: "javascript", mjs: "javascript" }[ext];
     const leitor = new FileReader();
     leitor.onload = () => {
       if (lang) this.lang.value = lang;

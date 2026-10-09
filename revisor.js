@@ -94,11 +94,12 @@ const Revisor = (() => {
   // Tira textos entre aspas e comentários, mantendo as linhas no lugar
   function limpar(codigo, lang) {
     let s = codigo;
-    if (lang === "pawn" || lang === "css") s = s.replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, " "));
+    if (lang === "pawn" || lang === "css" || lang === "javascript") s = s.replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, " "));
+    if (lang === "javascript") s = s.replace(/`(?:[^`\\]|\\.)*`/g, m => "`" + m.slice(1, -1).replace(/[^\n]/g, " ") + "`");
     if (lang === "html") s = s.replace(/<!--[\s\S]*?-->/g, m => m.replace(/[^\n]/g, " "));
     s = s.replace(/"(?:[^"\\\n]|\\.)*"/g, m => '"' + " ".repeat(Math.max(0, m.length - 2)) + '"');
     if (lang !== "html") s = s.replace(/'(?:[^'\\\n]|\\.)*'/g, m => "'" + " ".repeat(Math.max(0, m.length - 2)) + "'");
-    if (lang === "pawn") s = s.replace(/\/\/[^\n]*/g, m => " ".repeat(m.length));
+    if (lang === "pawn" || lang === "javascript") s = s.replace(/\/\/[^\n]*/g, m => " ".repeat(m.length));
     if (lang === "python") s = s.replace(/#[^\n]*/g, m => " ".repeat(m.length));
     return s;
   }
@@ -124,11 +125,14 @@ const Revisor = (() => {
   /* ---------- Descobrir a linguagem ---------- */
   function detectar(codigo) {
     const c = codigo;
-    const pts = { pawn: 0, python: 0, html: 0, css: 0 };
+    const pts = { pawn: 0, python: 0, html: 0, css: 0, javascript: 0 };
+    if (/\b(const|let)\s+[A-Za-z_$][\w$]*\s*=|\b(const|let)\s*[{[][^=]*\]?\}?\s*=/.test(c)) pts.javascript += 5;
+    if (/=>|\bconsole\.(log|error|assert)\s*\(|\bdocument\.\w+|addEventListener\s*\(|===|!==|\bfunction\s+\w+\s*\([^)]*\)\s*\{|\basync\s+function|\bawait\s|\brequire\s*\(|\bimport\s+.+\s+from\s|\bexport\s+(default|function|const)/.test(c)) pts.javascript += 5;
+    if (/\.(map|filter|forEach|reduce|push|querySelector)\s*\(/.test(c)) pts.javascript += 2;
     if (/#include\s*[<"]/.test(c)) pts.pawn += 5;
     if (/\bpublic\s+On[A-Z]\w*\s*\(/.test(c)) pts.pawn += 6;
     if (/\b(SendClientMessage|GivePlayer\w+|SetPlayer\w+|GetPlayer\w+|ShowPlayerDialog|CMD\s*:|playerid)\b/.test(c)) pts.pawn += 5;
-    if (/\bnew\s+(Float:|bool:)?\w+/.test(c)) pts.pawn += 3;
+    if (/\bnew\s+(Float:|bool:)?\w+/.test(c) && !/\bnew\s+(Promise|Error|Date|Map|Set|Array|Object|RegExp|URL|Worker|Function|[A-Z]\w*\s*\()/.test(c)) pts.pawn += 3;
     if (/;\s*$/m.test(c) && /\b(new|return)\b/.test(c)) pts.pawn += 2;
     if (/\b(stock|forward)\s+\w+/.test(c)) pts.pawn += 3;
     if (/^\s*(def|class)\s+\w+.*:\s*$/m.test(c)) pts.python += 5;
@@ -413,6 +417,35 @@ const Revisor = (() => {
     return p;
   }
 
+  function analisarJs(codigo) {
+    const p = [];
+    const limpo = limpar(codigo, "javascript");
+    conferirPares(limpo, p);
+    const linhas = limpo.split("\n");
+    const declaradas = new Set();
+    for (const m of limpo.matchAll(/\b(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) declaradas.add(m[1]);
+    for (const m of limpo.matchAll(/\b(?:const|let|var)\s*[{[]([^}\]=]*)[}\]]/g)) m[1].split(",").forEach(x => declaradas.add(x.split(":").pop().trim()));
+    for (const m of limpo.matchAll(/\(([^()]*)\)\s*=>|\b([A-Za-z_$][\w$]*)\s*=>|function\s*\w*\s*\(([^)]*)\)|catch\s*\(\s*(\w+)/g)) (m[1] || m[2] || m[3] || m[4] || "").split(",").forEach(x => { const n = x.replace(/=.*/, "").replace(/[{}[\].\s]/g, ""); if (n) declaradas.add(n); });
+    const consts = new Map();
+    for (const m of limpo.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=/g)) consts.set(m[1], true);
+    linhas.forEach((l, i) => {
+      const n = i + 1, t = l.trim();
+      if (!t) return;
+      if (/\b(if|while)\s*\((?:[^()=!<>]|\([^()]*\))*[^=!<>]=[^=](?:[^()]|\([^()]*\))*\)/.test(t)) p.push({ linha: n, tipo: "aviso", msg: "Tem **=** dentro do if/while: isso **guarda** um valor em vez de comparar. Pra comparar use **===**." });
+      if (/[^=!<>]==[^=]|!=[^=]/.test(t) && !/===|!==/.test(t.replace(/[^=!]==[^=]|!=[^=]/g, ""))) p.push({ linha: n, tipo: "aviso", msg: "Use **===** (e **!==**) em vez de **==** / **!=**: o == converte os tipos sozinho ({{5 == \"5\"}} dá true)." });
+      if (/^\s*var\s/.test(l)) p.push({ linha: n, tipo: "aviso", msg: "Prefira **let** ou **const** em vez de **var** (o var tem regras de escopo confusas)." });
+      const re = t.match(/^([A-Za-z_$][\w$]*)\s*(\+\+|--|[-+*/]?=(?!=))/);
+      if (re && consts.has(re[1]) && !/^(const|let|var)\b/.test(t)) p.push({ linha: n, tipo: "erro", msg: `**${re[1]}** foi criada com **const** e não pode mudar (TypeError: Assignment to constant variable). Use **let** se ela precisa mudar.` });
+      const atrib = t.match(/^([a-z_$][\w$]*)\s*=(?!=)/);
+      if (atrib && !declaradas.has(atrib[1]) && !/^(window|document|globalThis|module|exports)$/.test(atrib[1])) { declaradas.add(atrib[1]); p.push({ linha: n, tipo: "aviso", msg: `**${atrib[1]}** recebe valor sem ter sido criada com **let/const**: isso cria uma variável global sem querer (e dá erro no modo estrito).` }); }
+      if (/\binnerHTML\s*=\s*[^"'`;]*\b(value|input|params|nome|texto|msg)\b/.test(t)) p.push({ linha: n, tipo: "aviso", msg: "Colocar texto do usuário no **innerHTML** deixa ele injetar HTML/JS na página (XSS). Use **textContent**." });
+      if (/\beval\s*\(/.test(t)) p.push({ linha: n, tipo: "aviso", msg: "Evite **eval**: ele executa qualquer texto como código (inseguro e lento)." });
+    });
+    // "função" chamada sem parênteses depois do return / console.log errado
+    if (/console\.log\s+["'`]/.test(limpo)) { const k = limpo.split("\n").findIndex(l => /console\.log\s+["'`]/.test(l)); p.push({ linha: k + 1, tipo: "erro", msg: "O {{console.log}} precisa de parênteses: {{console.log(\"texto\")}}." }); }
+    return p;
+  }
+
   function analisarCss(codigo) {
     const p = [];
     const limpo = limpar(codigo, "css");
@@ -501,7 +534,7 @@ const Revisor = (() => {
     if (!lang) return null;
     let problemas = [];
     try {
-      problemas = { pawn: analisarPawn, python: analisarPython, html: analisarHtml, css: analisarCss }[lang](codigo);
+      problemas = { pawn: analisarPawn, python: analisarPython, html: analisarHtml, css: analisarCss, javascript: analisarJs }[lang](codigo);
     } catch (e) { problemas = []; }
     // remove repetidos e ordena por linha
     const vistos = new Set();

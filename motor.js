@@ -93,6 +93,84 @@ const Motor = {
     return revisarCodigo(c.codigo, c.lang);
   },
 
+  /* ================= MAIS REFERÊNCIAS À CONVERSA ================= */
+  // "explica a linha 20"
+  linhaN(t0) {
+    const m = t0.match(/^ (?:me |pode |agora |e )*(?:explica|explique|explicar|o que faz|oque faz|o que e|oque e|que faz|pra que serve|qual o problema d[ao]|ta errad[ao]|esta errad[ao]) (?:a |na |da )?linha (\d+)(?: d[oe] codigo)? ?\?? $/) || t0.match(/^ (?:e )?a linha (\d+) $/);
+    if (!m) return null;
+    const c = this.codigoRecente();
+    if (!c) return { texto: "De qual código? 🤔 Cola ele aqui (ou escreve no **editor**) que eu explico a linha.", sugestoes: ["/editor"] };
+    const n = +m[1], linhas = c.codigo.split("\n");
+    if (n < 1 || n > linhas.length) return { texto: `O código que eu tenho aqui tem **${linhas.length} linhas**, então não existe a linha ${n}. Quer que eu explique ele inteiro?`, sugestoes: ["explica esse código"] };
+    const l = linhas[n - 1];
+    if (!l.trim()) return { texto: `A linha ${n} está **vazia** (só serve pra separar as partes e deixar mais fácil de ler).` };
+    this.passo("Referência", `"linha ${n}" → peguei a linha ${n} do código ${c.origem === "aula" ? "do exemplo" : "da conversa"} (${NOMES[c.lang] || c.lang})`);
+    const exp = WCDEV.explicador ? WCDEV.explicador.explicar(l, c.lang, { semTitulo: true }) : "";
+    let texto = `> 🧠 Peguei a linha ${n} do último código${c.origem === "aula" ? " (do exemplo que eu mostrei)" : ""}.\n### 📍 Linha ${n}\n~~~${c.lang}\n${l.trim()}\n~~~\n${exp.replace(/^- \*\*Linha 1\*\* \{\{.*?\}\} → /m, "**O que faz:** ")}`;
+    // o que a análise achou NESSA linha
+    if (c.lang === "pawn" && WCDEV.analisador) {
+      const a = WCDEV.analisador.analisar(c.codigo, "pawn");
+      const aqui = a.achados.filter(x => x.linha === n).concat(a.sintaxe.filter(x => x.linha === n).map(x => ({ nivel: "erro", titulo: x.msg })));
+      if (aqui.length) texto += "\n\n**⚠️ Nessa linha eu também achei:**\n" + aqui.map(x => `- ${x.titulo.replace(/\*\*/g, "")}${x.correcao ? ` ${x.correcao}` : ""}`).join("\n");
+    }
+    const vizinhas = [n - 1, n + 1].filter(k => k >= 1 && k <= linhas.length && linhas[k - 1].trim());
+    return { texto, sugestoes: vizinhas.map(k => `explica a linha ${k}`).concat(["explica esse código"]) };
+  },
+
+  // "faz a mesma coisa em python"
+  mesmaCoisaEmOutra(t0) {
+    const m = t0.match(/ (?:faz|faca|fazer|mostra|cria|crie|quero|como fica|como seria|passa|converte|traduz)\s+(?:a |o )?(?:mesma coisa|isso|esse codigo|esse sistema|igual|esse comando)\s+(?:em|pra|para|no)\s+(python|javascript|js|pawn|html|css)\b/);
+    if (!m) return null;
+    const lang = m[1] === "js" ? "javascript" : m[1];
+    const c = this.codigoRecente();
+    // 1) se fui eu que gerei, gero de novo na outra linguagem
+    if (estado.ultimoPedido && WCDEV.gerador) {
+      const r = WCDEV.gerador.tentar(estado.ultimoPedido + " em " + NOMES[lang].toLowerCase(), normalizar(estado.ultimoPedido + " em " + lang), lang);
+      if (r && r.texto.includes("~~~" + lang)) { this.passo("Contexto", `refiz o último pedido em ${NOMES[lang]}`); r.texto = `> 🧠 Refiz o último pedido em **${NOMES[lang]}**.\n` + r.texto.replace(/^> 🧠[^\n]*\n/, ""); return r; }
+    }
+    // 2) o mesmo assunto na outra linguagem
+    const assunto = estado.ultimo && estado.ultimo.lang !== "conversa" ? estado.ultimo : null;
+    const tema = assunto ? buscaPorPalavras(assunto.titulo + " " + (assunto.chaves || []).slice(0, 6).join(" "), lang) : null;
+    const pawnPra = c && c.lang === "pawn" && lang !== "pawn";
+    let texto = `> 🧠 ${c ? `O último código é de ${NOMES[c.lang] || c.lang}.` : ""} Converter código automaticamente de uma linguagem pra outra eu **não faço**, porque ia sair errado: ${pawnPra ? "o Pawn roda dentro do servidor de GTA (com playerid, callbacks...), coisa que não existe em " + NOMES[lang] + "." : "cada linguagem tem um jeito próprio."}\n`;
+    if (tema && tema.lang === lang) { this.passo("Contexto", `mostrei "${tema.titulo}" em ${NOMES[lang]}, que é a mesma ideia`); const r = usarTema(tema); r.texto = texto + `Mas a **mesma ideia** em ${NOMES[lang]} é assim 👇\n\n` + r.texto; return r; }
+    return { texto: texto + `Me diz **o que** você quer fazer em ${NOMES[lang]} (ex: "cria uma calculadora em ${NOMES[lang].toLowerCase()}") que eu monto do zero.`, sugestoes: ["/" + lang] };
+  },
+
+  // "o erro continua", "ainda dá erro", "não resolveu"
+  erroContinua(t0) {
+    if (!/ (o )?(erro|problema|bug) (continua|ainda|persiste|nao saiu|voltou)| (continua|ainda) (dando|da|com|aparecendo|acontecendo)( o)? (erro|problema|bug)| nao resolveu| nao funcionou ainda| continua nao funcionando| ainda nao funciona| mesmo erro /.test(t0)) return null;
+    // o erro é do código DELE (ou do que eu montei), não de um exemplo de aula
+    const u = estado.ultimoCodigo;
+    const c = u ? { ...u, origem: u.origem || "conversa" } : this.codigoRecente();
+    if (!c || c.origem === "aula") return { texto: "Pra eu ver o que está acontecendo, me manda o **código atual** (do jeito que está agora) e a **mensagem de erro** exata. 🙂", sugestoes: ["/editor"] };
+    this.passo("Contexto", "o erro continua: reanalisei o código mais recente e pedi a mensagem exata");
+    const r = revisarCodigo(c.codigo, c.lang) || { texto: "", sugestoes: [] };
+    r.texto = `> 🧠 Analisei de novo o código mais recente da conversa (${c.codigo.split("\n").length} linhas de ${NOMES[c.lang] || c.lang}).\n` +
+      "Se o erro continua, três perguntas pra gente achar rápido:\n- Você **compilou de novo** depois de mudar? (o servidor usa o .amx, não o .pwn)\n- Qual é a **mensagem exata** (com o número da linha)? Cola ela aqui.\n- O código que está rodando é **esse mesmo** que eu tenho? Se mudou, cola a versão nova.\n\n" + r.texto;
+    return r;
+  },
+
+  // resumo da conversa atual (pra conversas longas)
+  resumo() {
+    const c = typeof Historico !== "undefined" && Historico.atualId ? Historico.pegar(Historico.atualId) : null;
+    if (!c || !c.msgs.length) return { texto: "Essa conversa ainda está vazia: nada pra resumir. 🙂" };
+    const msgs = c.msgs;
+    const minhas = msgs.filter(m => m.q === "user");
+    const codigos = minhas.filter(m => m.codigo || /[;{}]\s*$/m.test(m.t)).length;
+    const assuntos = [...new Set(msgs.filter(m => m.q === "bot").map(m => (m.t.match(/^### (.+)$/m) || [])[1]).filter(Boolean).map(x => x.replace(/[*{}]/g, "").replace(/^[^\wÀ-ú]+/, "").trim()))];
+    const desafios = msgs.filter(m => m.q === "bot" && /### ✅ (Desafio vencido|Missão completa|.*Entrou na cabeça|Mandou|Perfeito|Acertou|Show|Isso aí)/.test(m.t)).length;
+    const perguntas = minhas.filter(m => !m.t.startsWith("/") && !/[;{}]/.test(m.t)).map(m => m.t.split("\n")[0].slice(0, 70));
+    const linhas = [`**${msgs.length} mensagens** (${minhas.length} suas)`];
+    if (assuntos.length) linhas.push(`**Assuntos:** ${assuntos.slice(-10).join(" · ")}`);
+    if (perguntas.length) linhas.push(`**Suas últimas perguntas:**\n${perguntas.slice(-5).map(p => "- " + p).join("\n")}`);
+    if (codigos) linhas.push(`**Códigos que você mandou:** ${codigos}`);
+    if (desafios) linhas.push(`**Desafios vencidos aqui:** ${desafios} ✅`);
+    const atual = this.codigoRecente();
+    if (atual) linhas.push(`**Código em memória agora:** ${atual.codigo.split("\n").length} linhas de ${NOMES[atual.lang] || atual.lang}${atual.origem === "aula" ? " (exemplo meu)" : ""}`);
+    return { texto: "### 🧾 Resumo desta conversa\n" + linhas.join("\n\n") + "\n\nPra começar do zero sem apagar nada, toque no balão **🧠** lá em cima (eu esqueço o contexto).", sugestoes: ["continuar de onde parei", "/boletim"], _semMemoria: true };
+  },
+
   /* "faz igual mas pro colete" / "agora coloca só pra admin" */
   TROCAS_API: [
     { nome: "vida", palavras: ["vida", "hp", "cura", "curar", "heal"], set: "SetPlayerHealth", get: "GetPlayerHealth", texto: ["Vida", "vida"], adj: ["cheia", "cheia"] },
@@ -229,13 +307,13 @@ const Motor = {
         `Ainda não tenho conteúdo sobre **${assunto}**, e prefiro te falar isso do que inventar uma resposta errada. 😅\n\n` +
         `O que dá pra fazer:\n- Me pergunte de outro jeito (com outras palavras)\n- Veja o **/indice** pra ver tudo que eu sei\n` +
         (perto.length ? `- Ou veja o que eu tenho de mais parecido 👇` : ""),
-      sugestoes: [...perto.slice(0, 3), "/indice"],
+      sugestoes: [...perto.slice(0, 3), "/indice", ...(WCDEV.modeloLocal && WCDEV.modeloLocal.ativo() ? ["/ia " + t.trim().slice(0, 80)] : [])],
     };
   },
 
   /* ================= LINGUAGEM/TECNOLOGIA QUE NÃO ESTÁ NA BASE ================= */
   FORA: [
-    [/ (rust) /, "Rust"], [/ (java) /, "Java"], [/ (javascript|js|node|nodejs|node js|react|vue|angular|typescript|ts) /, "JavaScript"],
+    [/ (rust) /, "Rust"], [/ (java) /, "Java"], [/ (react|vue|angular|typescript|ts|next.js|nextjs) /, "frameworks de JavaScript (React/Vue/Angular/TypeScript)"],
     [/ (c#|c sharp|csharp) /, "C#"], [/ (c\+\+|cpp) /, "C++"], [/ (linguagem c|em c|no c|codigo c) /, "C"], [/ (php|laravel) /, "PHP"],
     [/ (golang|em go|linguagem go) /, "Go"], [/ (kotlin) /, "Kotlin"], [/ (swift) /, "Swift"], [/ (lua|roblox|luau) /, "Lua/Roblox"],
     [/ (ruby|rails) /, "Ruby"], [/ (flutter|dart) /, "Flutter/Dart"], [/ (nginx|apache) /, "servidor web (Nginx/Apache)"],
@@ -246,7 +324,6 @@ const Motor = {
     const achado = this.FORA.find(([re]) => re.test(t));
     if (!achado) return null;
     // "como colocar javascript no html": isso eu sei (o básico que liga JS na página)
-    if (achado[1] === "JavaScript" && / (html|pagina|site|botao|script|ligar|colocar|integrar) /.test(t)) return null;
     // "lua" pode ser "a lua do jogo"... só conta se parecer pergunta de programação
     if (achado[1] === "Lua/Roblox" && !/ (codigo|script|programar|programacao|linguagem|funcao|studio|roblox|luau|em lua) /.test(t)) return null;
     if (/ (java|javascript|js) /.test(t) && / (diferenca|diferente|igual|mesma coisa) /.test(t) && / java / .test(t) && / (javascript|js) /.test(t)) { /* deixa a visão geral responder abaixo */ }
@@ -267,9 +344,49 @@ const Motor = {
       "Se quiser, eu te mostro a mesma ideia em **Python**, que é ótimo pra começar.";
     return {
       texto: `> 🧠 Você perguntou sobre **${achado[1]}**. Procurei na minha base e não tenho aulas confiáveis sobre isso.\n` +
-        `Eu fui feito pra ensinar **Pawn, Python, HTML e CSS**. Sobre **${achado[1]}** eu prefiro te falar a verdade do que inventar uma resposta que pode estar errada. 😅\n\n${equivalente}`,
+        `Eu fui feito pra ensinar **Pawn, Python, HTML, CSS e JavaScript**. Sobre **${achado[1]}** eu prefiro te falar a verdade do que inventar uma resposta que pode estar errada. 😅\n\n${equivalente}`,
       sugestoes: nossa ? ["/" + nossa, "/indice " + nossa] : ["/python", "/pawn", "/indice"],
     };
+  },
+
+  /* ================= DIAGNÓSTICO POR SINTOMA (base problemas.js) ================= */
+  SINAIS: / (nao funciona|nao funcionou|nao aparece|nao apareceu|nao salva|nao salvou|perde|perdeu|perdendo|some|sumiu|somem|trava|travou|travando|crash|crasha|crashou|caiu|cai|bug|bugou|bugado|da erro|deu erro|aparece|aparecendo|nao chega|nao carrega|nao roda|nao executa|nao acha|nao sobe|nao upa|errado|errada|duplicando|dobro|duas vezes|infinito|do nada|qualquer um|qualquer senha|vazia|negativo|zerad|lento|lag|nao faz nada|nao mostra|entrou com|veio com|herdou|qualquer um|nan|is not defined|out of bounds|unknown command|cannot read|failed|fatal error|error 100|typeerror|indexerror|indentationerror|filenotfounderror) /,
+  _probs: null,
+  prepararProblemas() {
+    this._probs = (WCDEV.problemas || []).map(p => ({ p, sint: p.sintomas.map(x => normalizar(x)), palavras: new Set(p.sintomas.join(" ").split(/\W+/).map(w => normalizar(w).trim()).filter(w => w.length >= 4 && !this.GENERICAS.has(w))) }));
+  },
+  diagnosticar(t, lang) {
+    if (!WCDEV.problemas) return null;
+    if (!this._probs) this.prepararProblemas();
+    const temSinal = this.SINAIS.test(t);
+    const tExp = this.expandir(t);
+    const qs = new Set(tExp.split(" ").filter(w => w.length >= 4 && !this.GENERICAS.has(w)));
+    let melhor = null, pts = 0, segundo = null, pts2 = 0;
+    for (const item of this._probs) {
+      let s = 0;
+      for (const frase of item.sint) if (tExp.includes(frase)) s = Math.max(s, 6 + frase.trim().split(" ").length * 2);
+      if (!s && !temSinal) continue;   // sem frase de sintoma igual e sem cara de problema: não é diagnóstico
+      let comuns = 0;
+      for (const w of qs) if (item.palavras.has(w)) comuns++;
+      s += comuns * 1.5;
+      if (lang && item.p.lang !== lang && !(lang === "html" && item.p.lang === "css") && !(lang === "css" && item.p.lang === "html")) s -= 4;
+      if (!lang && estado.lang && item.p.lang === estado.lang) s += 1;
+      if (s > pts) { segundo = melhor; pts2 = pts; melhor = item.p; pts = s; } else if (s > pts2) { segundo = item.p; pts2 = s; }
+    }
+    if (!melhor || pts < 6) return null;
+    const p = melhor;
+    this.passo("Diagnóstico", `o que você descreveu bate com "${p.titulo}" (${Math.round(pts)} pontos)`);
+    if (p.lang && NOMES[p.lang]) atualizarLang(p.lang);
+    const lista = xs => xs.map((x, i) => `- ${i === 0 ? "**Mais comum:** " : ""}${x}`).join("\n");
+    let texto = `> 🩺 Pelo que você descreveu, parece **${p.titulo.replace(/\*\*/g, "")}**. Sem ver o código eu não tenho certeza, então vou te passar as causas da mais comum pra menos comum.\n### 🩺 ${p.titulo}\n`;
+    texto += `**Causas prováveis:**\n${lista(p.causas)}\n\n**Como resolver:**\n${p.correcoes.map(x => "- " + x).join("\n")}\n`;
+    if (p.errado) texto += `\n**Assim dá problema:**\n~~~${p.lang}\n${p.errado}\n~~~\n`;
+    if (p.certo) texto += `\n**Assim funciona:**\n~~~${p.lang}\n${p.certo}\n~~~\n`;
+    texto += `\n**Vale pra:** ${p.compat} · **Confiança:** ${p.confianca}${p.origem ? ` (${p.origem})` : ""}`;
+    texto += `\n\n👉 **Cola o código** que eu analiso e te digo **qual** dessas causas é a sua${p.regras && p.regras.length ? " (eu tenho regras que procuram exatamente isso)" : ""}.`;
+    const sug = ["/editor"];
+    if (segundo && pts2 >= 6 && segundo !== p) { sug.push(segundo.titulo.replace(/["*]/g, "").slice(0, 60)); texto += `\n\nSe não for isso, pode ser: **${segundo.titulo.replace(/\*\*/g, "")}**.`; }
+    return { texto, sugestoes: sug, _semMemoria: true };
   },
 
   /* ================= PEDIDO SEM DETALHE: PERGUNTA ANTES ================= */

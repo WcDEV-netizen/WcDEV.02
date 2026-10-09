@@ -56,18 +56,20 @@ const Treino = {
     const lista = this.lista(ex.lang);
     const n = lista.indexOf(ex) + 1;
     const estrelas = "⭐".repeat(ex.nivel);
-    const cabeca = ex.missao ? `🎯 ${ex.titulo}` : ex.gerado ? `🎲 ${ex.titulo} (${NOMES[ex.lang]})` : `🏋️ Treino de ${NOMES[ex.lang]} — ${n}/${lista.length}: ${ex.titulo}`;
+    const cabeca = ex.daAula ? `🎯 Sua vez! Desafio da aula` : ex.missao ? `🎯 ${ex.titulo}` : ex.gerado ? `🎲 ${ex.titulo} (${NOMES[ex.lang]})` : `🏋️ Treino de ${NOMES[ex.lang]} — ${n}/${lista.length}: ${ex.titulo}`;
     return {
-      texto: `### ${cabeca} ${estrelas}\n${ex.enunciado}\n\nEscreva o código no **editor** (abriu do lado; no celular toque em **</> Editor** lá em cima) e toque em **✔ Enviar resposta**.` +
+      texto: `### ${cabeca} ${estrelas}\n${ex.enunciado}\n\n` + (ex.daAula
+        ? "Escreva no **editor** e toque em **✔ Enviar resposta** (ou cole o código aqui no chat). Passou? Aí sim a gente vai pro próximo passo. 💪"
+        : "Escreva o código no **editor** (abriu do lado; no celular toque em **</> Editor** lá em cima) e toque em **✔ Enviar resposta**.") +
         (ex.base ? `\n\nO seu CSS vai ser aplicado neste HTML:\n~~~html\n${ex.base}\n~~~` : ""),
-      sugestoes: ["/editor", "/dica", "/pular", "/sair"],
+      sugestoes: ex.daAula ? ["/editor", "/dica", "/pular"] : ["/editor", "/dica", "/pular", "/sair"],
     };
   },
 
   corrigir(codigo) {
     const ex = this.ativo;
     const falhas = ex.testes.filter(t => !t.re.test(codigo));
-    const analise = WCDEV.revisor ? WCDEV.revisor.analisar(codigo, ex.lang) : null;
+    const analise = WCDEV.revisor && !ex.semRevisor ? WCDEV.revisor.analisar(codigo, ex.lang) : null;
     const erros = analise ? analise.problemas.filter(p => p.tipo === "erro") : [];
     const avisos = analise ? analise.problemas.filter(p => p.tipo !== "erro") : [];
     const certos = ex.testes.length - falhas.length;
@@ -88,6 +90,12 @@ const Treino = {
           "\n\nContinue montando no editor e envie de novo.",
         sugestoes: ["/editor", "/corrigir", "/sair"], preview,
       };
+    }
+
+    if (!falhas.length && !erros.length && ex.daAula && WCDEV.professor) {
+      this.ativo = null;
+      if (WCDEV.editor) WCDEV.editor.fecharExercicio();
+      return WCDEV.professor.aulaConcluida(ex, avisos, preview);
     }
 
     if (!falhas.length && !erros.length && ex.gerado) {
@@ -167,6 +175,7 @@ const Treino = {
 
   pular() {
     if (!this.ativo) return this.iniciar(estado.lang);
+    if (this.ativo.daAula && WCDEV.professor) return WCDEV.professor.pularDesafioDaAula(this.ativo);
     if (this.ativo.missao) return this.abrir(WCDEV.desafios.missao(this.ativo.lang));
     if (this.ativo.gerado) return this.abrir(WCDEV.desafios.gerar(this.ativo.lang, WCDEV.professor ? WCDEV.professor.nivelAdaptado(this.ativo.lang) : null));
     const lang = this.ativo.lang;
@@ -179,7 +188,7 @@ const Treino = {
     this.ativo = null;
     if (WCDEV.editor) WCDEV.editor.fecharExercicio();
     atualizarLang(estado.lang);
-    return { texto: "Saiu do modo treino. Quando quiser voltar é só digitar {{/treinar}}. 😉", sugestoes: ["/treinar", "/ajuda"] };
+    return { texto: "Saiu do modo treino. Quando quiser voltar é só digitar {{/treinar}}. 😉" + (estado.ultimaAula && WCDEV.desafiosAula && WCDEV.desafiosAula[estado.ultimaAula.id] ? "\nO desafio da aula fica te esperando: quando quiser, toque em **🎯 desafio desta aula**." : ""), sugestoes: ["🎯 desafio desta aula", "/treinar", "/ajuda"] };
   },
 
   zerar(lang) {
@@ -190,7 +199,7 @@ const Treino = {
 
   status() {
     const d = this.progresso._desafios || {};
-    const linhas = ["pawn", "python", "html", "css"].map(l => `- **${NOMES[l]}:** ${this.feitos(l).length}/${this.lista(l).length} exercícios · ${d[l] || 0} desafios gerados vencidos`);
+    const linhas = ["pawn", "python", "html", "css", "javascript"].map(l => `- **${NOMES[l]}:** ${this.feitos(l).length}/${this.lista(l).length} exercícios · ${d[l] || 0} desafios gerados vencidos`);
     return { texto: `### Seu progresso no treino\n${linhas.join("\n")}`, sugestoes: ["/treinar"] };
   },
 };

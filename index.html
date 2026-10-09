@@ -25,6 +25,7 @@
       <button class="trilha" data-cmd="/python"><span class="dot py"></span>Python</button>
       <button class="trilha" data-cmd="/html"><span class="dot html"></span>HTML</button>
       <button class="trilha" data-cmd="/css"><span class="dot css"></span>CSS</button>
+      <button class="trilha" data-cmd="/javascript"><span class="dot js"></span>JavaScript</button>
 
       <div class="secao-titulo">Praticar</div>
       <button class="trilha" data-cmd="/treinar"><span class="icone">🏋️</span>Treinar</button>
@@ -32,6 +33,7 @@
       <button class="trilha" data-cmd="/missao"><span class="icone">🎯</span>Missão</button>
       <button class="trilha" data-cmd="/editor"><span class="icone">✍️</span>Editor de código</button>
       <button class="trilha" data-cmd="/aprendidos"><span class="icone">🧠</span>Me ensinar</button>
+      <button class="trilha" data-cmd="/importar"><span class="icone">📥</span>Importar conhecimento</button>
 
       <div class="secao-titulo">Comandos</div>
       <div class="comandos">
@@ -87,6 +89,7 @@
           <option value="python">Python</option>
           <option value="html">HTML</option>
           <option value="css">CSS</option>
+          <option value="javascript">JavaScript</option>
         </select>
         <button class="ed-icone so-pc" id="editorGrande" title="Editor grande" aria-label="Editor grande">⛶</button>
         <button class="editor-fechar" id="editorFechar" aria-label="Fechar editor">✕</button>
@@ -99,7 +102,7 @@
         <span class="ed-espaco"></span>
         <button id="edMenor" title="Letra menor" aria-label="Letra menor">A−</button>
         <button id="edMaior" title="Letra maior" aria-label="Letra maior">A+</button>
-        <input type="file" id="edArquivo" hidden accept=".pwn,.inc,.p,.py,.html,.htm,.css,.txt">
+        <input type="file" id="edArquivo" hidden accept=".pwn,.inc,.p,.py,.html,.htm,.css,.js,.mjs,.txt">
       </div>
       <div class="ed-menu" id="edMenuModelos" hidden></div>
       <div class="editor-exercicio" id="editorExercicio" hidden></div>
@@ -151,8 +154,11 @@
   <script src="pawn.js"></script>
   <script src="pawn-sistemas.js"></script>
   <script src="aulas-extras.js"></script>
+  <script src="javascript.js"></script>
+  <script src="problemas.js"></script>
   <!-- Ferramentas: revisor de código, treino e "ensinar" -->
   <script src="revisor.js"></script>
+  <script src="analisador.js"></script>
   <script src="treino.js"></script>
   <!-- Inteligência: entender frases, explicar/corrigir código, gerar código e desafios -->
   <script src="cerebro.js"></script>
@@ -161,6 +167,9 @@
   <script src="explicador.js"></script>
   <script src="gerador.js"></script>
   <script src="desafios.js"></script>
+  <script src="desafios-aulas.js"></script>
+  <script src="aprendizagem.js"></script>
+  <script src="modelo-local.js"></script>
   <!-- Conta, planos, conversas salvas e editor -->
   <script src="conta.js"></script>
   <script src="editor.js"></script>

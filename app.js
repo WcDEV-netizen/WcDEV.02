@@ -8,7 +8,7 @@
 window.WCDEV = window.WCDEV || { temas: [] };
 WCDEV.refs = WCDEV.refs || [];
 
-const NOMES = { python: "Python", html: "HTML", css: "CSS", pawn: "Pawn" };
+const NOMES = { python: "Python", html: "HTML", css: "CSS", pawn: "Pawn", javascript: "JavaScript" };
 
 const estado = {
   lang: null,        // linguagem que o aluno está estudando agora
@@ -46,7 +46,7 @@ function formatar(texto) {
   });
 
   let html = escapar(texto.trim())
-    .replace(/\{\{(.+?)\}\}/g, '<code class="inline">$1</code>')
+    .replace(/\{\{(.+?)\}\}(?!\})/g, '<code class="inline">$1</code>')
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 
   const saida = [];
@@ -69,15 +69,98 @@ function formatar(texto) {
 
   return saida.join("").replace(/\u0000(\d+)\u0000/g, (_, i) => {
     const b = blocos[i];
+    if (b.lang === "analise") return desenharAnalise(b.cod);
+    if (b.lang === "diff") return desenharDiff(b.cod);
     return `<div class="codigo"><div class="codigo-topo"><span>${b.lang}</span>` +
       `<button class="copiar">copiar</button></div><pre>${WCDEV.cores ? WCDEV.cores.colorir(b.cod, b.lang) : escapar(b.cod)}</pre></div>`;
   });
 }
 
+/* ---------- Painel de análise de código e comparação ---------- */
+function inlineSeguro(t) {
+  return escapar(String(t || "")).replace(/\{\{(.+?)\}\}(?!\})/g, '<code class="inline">$1</code>').replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+}
+function desenharAnalise(json) {
+  let d;
+  try { d = JSON.parse(json); } catch (e) { return `<pre>${escapar(json)}</pre>`; }
+  const c = { erro: 0, provavel: 0, verificar: 0, sugestao: 0 };
+  d.achados.forEach(a => c[a.nivel]++);
+  const chip = (cls, ic, n, nome) => `<span class="an-chip ${cls}${n ? "" : " zero"}">${ic} ${n} ${nome}</span>`;
+  let h = `<div class="analise" role="region" aria-label="Análise do código">`;
+  h += `<div class="an-topo"><span class="an-titulo">🔬 Análise do código</span><span class="an-meta">${d.linhas} linhas · ${d.regras} regras (v${escapar(d.versao || "")}) · ${d.tempo} ms${d.trecho ? " · trecho (sem o arquivo inteiro)" : ""}</span></div>`;
+  h += `<div class="an-chips">${chip("sintaxe", "⛔", d.sintaxe.length, "sintaxe")}${chip("erro", "❌", c.erro, "confirmados")}${chip("provavel", "⚠️", c.provavel, "prováveis")}${chip("verificar", "🔍", c.verificar, "riscos")}${chip("sugestao", "💡", c.sugestao, "melhorias")}</div>`;
+  if (d.cortado || d.puladas) h += `<div class="an-nota">⚠️ ${d.cortado ? "O código era muito grande: analisei só a primeira parte. " : ""}${d.puladas ? `${d.puladas} regra(s) não rodaram pra não travar.` : ""}</div>`;
+  const linha = (n, txt) => `<div class="an-linha"><span class="an-n">${n}</span><code>${WCDEV.cores ? WCDEV.cores.colorir(txt || "", "pawn") : escapar(txt || "")}</code></div>`;
+  for (const x of d.sintaxe) h += `<div class="an-card sintaxe"><div class="an-cab"><span class="an-tag">⛔ Erro de sintaxe</span> Linha ${x.linha}</div>${x.trecho ? linha(x.linha, x.trecho) : ""}<p>${inlineSeguro(x.msg)}</p></div>`;
+  const ICONE = { erro: "❌", provavel: "⚠️", verificar: "🔍", sugestao: "💡" };
+  for (const a of d.achados) {
+    h += `<details class="an-card ${a.nivel}"${d.curto ? "" : (a.nivel === "erro" || a.nivel === "provavel" ? " open" : "")}><summary><span class="an-tag">${ICONE[a.nivel]} ${escapar(a.rotulo)}</span> <span class="an-l">Linha ${a.linha}</span> ${inlineSeguro(a.titulo)}</summary>`;
+    h += linha(a.linha, a.trecho);
+    h += `<dl><dt>Por quê</dt><dd>${inlineSeguro(a.porque)}</dd>`;
+    if (a.consequencia) h += `<dt>Consequência</dt><dd>${inlineSeguro(a.consequencia)}</dd>`;
+    if (a.quando) h += `<dt>Quando acontece</dt><dd>${inlineSeguro(a.quando)}</dd>`;
+    h += `<dt>Como corrigir</dt><dd>${inlineSeguro(a.correcao)}</dd>`;
+    h += `<dt>Confiança</dt><dd>${inlineSeguro(a.confianca)}</dd></dl>`;
+    if (a.exemplo) h += `<pre class="an-ex">${WCDEV.cores ? WCDEV.cores.colorir(a.exemplo, "pawn") : escapar(a.exemplo)}</pre>`;
+    h += `</details>`;
+  }
+  for (const inv of d.investigacoes || []) {
+    const IC = { ok: "✅", atencao: "⚠️", depende: "❓" };
+    h += `<div class="an-card investigacao"><div class="an-cab"><span class="an-tag">🧭 Investigação</span> ${inlineSeguro(inv.titulo)}</div><ul class="an-check">${inv.itens.map(([s, t]) => `<li class="${s}"><span>${IC[s]}</span><span>${inlineSeguro(t)}</span></li>`).join("")}</ul><p class="an-leg">✅ ok · ⚠️ atenção · ❓ depende do que você quer pro seu servidor</p></div>`;
+  }
+  if (d.avisos && d.avisos.length) h += `<div class="an-card sugestao"><div class="an-cab"><span class="an-tag">📝 Avisos do revisor</span></div><ul>${d.avisos.map(x => `<li>Linha ${x.linha}: ${inlineSeguro(x.msg)}</li>`).join("")}</ul></div>`;
+  return h + "</div>";
+}
+function desenharDiff(txt) {
+  const linhas = txt.split("\n");
+  let a = 0, b = 0;
+  const html = linhas.map(l => {
+    const tipo = l.startsWith("+ ") ? "add" : l.startsWith("- ") ? "del" : "igual";
+    const corpo = l.slice(2);
+    if (tipo !== "add") a++;
+    if (tipo !== "del") b++;
+    return `<div class="df ${tipo}"><span class="df-n">${tipo === "add" ? "" : a}</span><span class="df-n">${tipo === "del" ? "" : b}</span><span class="df-s">${tipo === "add" ? "+" : tipo === "del" ? "−" : ""}</span><code>${WCDEV.cores ? WCDEV.cores.colorir(corpo, "pawn") : escapar(corpo)}</code></div>`;
+  }).join("");
+  const add = linhas.filter(l => l.startsWith("+ ")).length, del = linhas.filter(l => l.startsWith("- ")).length;
+  return `<details class="diff" open><summary>🔀 Comparar original × corrigido <span class="df-add">+${add}</span> <span class="df-del">−${del}</span></summary><div class="df-corpo">${html}</div></details>`;
+}
+
 /* ---------- Mensagens na tela ---------- */
 
+/* ---------- rolagem do chat ----------
+   guarda se você está lá embaixo (lendo o fim) ou lá em cima (lendo algo antigo).
+   Se estiver lendo lá em cima, não te puxo pra baixo: aparece o botão "↓ nova mensagem". */
+const rolagem = {
+  noFim: true,
+  botao: null,
+  calcular() { return elMensagens.scrollHeight - elMensagens.scrollTop - elMensagens.clientHeight < 80; },
+  para(y) { elMensagens.scrollTop = Math.max(0, y); this.noFim = this.calcular(); },
+  descer() { elMensagens.scrollTop = elMensagens.scrollHeight; this.noFim = true; this.esconderBotao(); },
+  avisarNova() {
+    if (!this.botao) {
+      this.botao = document.createElement("button");
+      this.botao.className = "btn-descer";
+      this.botao.textContent = "↓ nova mensagem";
+      this.botao.onclick = () => this.descer();
+      elMensagens.parentNode.appendChild(this.botao);
+    }
+    this.botao.hidden = false;
+  },
+  esconderBotao() { if (this.botao) this.botao.hidden = true; },
+};
+elMensagens.addEventListener("scroll", () => {
+  rolagem.noFim = rolagem.calcular();
+  if (rolagem.noFim) rolagem.esconderBotao();
+}, { passive: true });
+// se o tamanho do chat muda (teclado do celular abriu, girou a tela) e você estava no fim, continua no fim
+if (typeof ResizeObserver !== "undefined") {
+  let estavaNoFim = true;
+  elMensagens.addEventListener("scroll", () => (estavaNoFim = rolagem.noFim), { passive: true });
+  new ResizeObserver(() => { if (estavaNoFim) elMensagens.scrollTop = elMensagens.scrollHeight; }).observe(elMensagens);
+}
+
 function adicionarMensagem(quem, conteudoHtml, sugestoes, preview, animar) {
-  const perto = elMensagens.scrollHeight - elMensagens.scrollTop - elMensagens.clientHeight < 160;
+  const perto = rolagem.noFim;
   const msg = document.createElement("div");
   msg.className = `msg ${quem}`;
   msg.innerHTML = `<div class="avatar">${quem === "bot" ? "WC" : "eu"}</div><div class="balao">${conteudoHtml}</div>`;
@@ -89,6 +172,7 @@ function adicionarMensagem(quem, conteudoHtml, sugestoes, preview, animar) {
     box.innerHTML = '<div class="preview-topo">resultado</div>';
     const frame = document.createElement("iframe");
     frame.setAttribute("sandbox", "");
+    frame.addEventListener("load", () => { if (rolagem.noFim) rolagem.descer(); });
     frame.srcdoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;margin:12px;color:#111;background:#fff}</style></head><body>${preview}</body></html>`;
     box.appendChild(frame);
     msg.querySelector(".balao").appendChild(box);
@@ -107,6 +191,27 @@ function adicionarMensagem(quem, conteudoHtml, sugestoes, preview, animar) {
     msg.querySelector(".balao").appendChild(box);
   }
 
+  // 👍 / 👎: vira sugestão pra revisão (não muda o que a IA sabe)
+  if (quem === "bot" && animar && WCDEV.aprendizagem && !/class="digitando"/.test(conteudoHtml)) {
+    const fb = document.createElement("div");
+    fb.className = "fb";
+    fb.innerHTML = '<button class="fb-b" data-t="bom" aria-label="Resposta boa" title="Resposta boa">👍</button><button class="fb-b" data-t="ruim" aria-label="Resposta ruim" title="Resposta ruim">👎</button>';
+    fb.addEventListener("click", e => {
+      const b = e.target.closest(".fb-b");
+      if (!b) return;
+      const anterior = msg.previousElementSibling;
+      const pergunta = anterior && anterior.classList.contains("user") ? anterior.innerText : "";
+      const resposta = msg.querySelector(".balao").innerText;
+      if (b.dataset.t === "bom") { WCDEV.aprendizagem.registrarFeedback("bom", resposta, pergunta); fb.innerHTML = '<span class="fb-ok">Valeu! 💙</span>'; return; }
+      fb.innerHTML = '<input class="fb-in" maxlength="300" placeholder="O que estava errado? (opcional)" aria-label="O que estava errado"><button class="fb-env">Enviar</button>';
+      const enviarFb = () => { WCDEV.aprendizagem.registrarFeedback("ruim", resposta, pergunta, fb.querySelector(".fb-in").value); fb.innerHTML = '<span class="fb-ok">Anotado pra revisão. Isso não muda o que eu sei sozinho, mas ajuda a melhorar a base. 🙏</span>'; };
+      fb.querySelector(".fb-env").onclick = enviarFb;
+      fb.querySelector(".fb-in").addEventListener("keydown", ev => { if (ev.key === "Enter") enviarFb(); });
+      fb.querySelector(".fb-in").focus();
+    });
+    msg.querySelector(".balao").appendChild(fb);
+  }
+
   // a resposta aparece em partes, como alguém falando (só efeito visual, bem leve)
   if (animar) {
     [...msg.querySelector(".balao").children].forEach((filho, i) => {
@@ -118,8 +223,10 @@ function adicionarMensagem(quem, conteudoHtml, sugestoes, preview, animar) {
   elMensagens.appendChild(msg);
   // rolagem: mensagem minha sempre desce; resposta longa vai pro começo dela, pra ler de cima
   if (quem === "user" || perto) {
-    if (quem === "bot" && msg.offsetHeight > elMensagens.clientHeight * 0.8) elMensagens.scrollTop = msg.offsetTop - 12;
-    else elMensagens.scrollTop = elMensagens.scrollHeight;
+    if (quem === "bot" && msg.offsetHeight > elMensagens.clientHeight * 0.8) rolagem.para(msg.offsetTop - 12);
+    else rolagem.descer();
+  } else if (quem === "bot" && !msg.querySelector(".digitando")) {
+    rolagem.avisarNova();
   }
   return msg;
 }
@@ -152,6 +259,7 @@ function atualizarLang(lang) {
 function langProvavel(t) {
   if (/ (jogador|jogadores|playerid|skin|colete|veiculo|veiculos|viatura|kickar|banir|gamemode|filterscript|textdraw|dialog|checkpoint|pickup|interior|mundo virtual|rcon|server.cfg|callback|zcmd|sscanf|dof2|payday|teleportar) /.test(t)) return "pawn";
   if (/ (div|tag|pagina html|<\w+>) /.test(t)) return "html";
+  if (/ (console.log|addeventlistener|queryselector|getelementbyid|dom|arrow function|=>|promise|async|await|fetch|localstorage|json.parse|json.stringify|let|const) /.test(t)) return "javascript";
   return null;
 }
 
@@ -159,6 +267,7 @@ function detectarLinguagem(t) {
   if (/ (python|py|pyton|phyton) /.test(t)) return "python";
   if (/ (html|htm|html5) /.test(t)) return "html";
   if (/ (css|css3) /.test(t)) return "css";
+  if (/ (javascript|js|java script|ecmascript|node|nodejs|node js) /.test(t)) return "javascript";
   if (/ (pawn|samp|sa-mp|sa mp|open.mp|openmp|omp|pwn|gta samp|gamemode|filterscript) /.test(t)) return "pawn";
   return null;
 }
@@ -299,7 +408,7 @@ function semArtigos(t) {
   r = r.trim().split(" ").map(p => raiz(VERBOS[p] || p)).join(" ");
   return " " + r.replace(/\s+/g, " ").trim() + " ";
 }
-const SO_LINGUAGEM = new Set(["samp", "sa-mp", "pawn", "python", "html", "css", "open.mp", "openmp", "py", "js"]);
+const SO_LINGUAGEM = new Set(["samp", "sa-mp", "pawn", "python", "html", "css", "open.mp", "openmp", "py", "js", "javascript"]);
 function prepararTema(t) {
   t._chaves = t.chaves.map(c => normalizar(c));
   // versão sem artigos; descarta se sobrar só o nome da linguagem (ex: "a_samp" -> "samp")
@@ -331,13 +440,14 @@ function gruposDe(lang) {
 }
 
 function listarTopicos(lang) {
-  const lista = temasDa(lang).map((x, i) => `- **${i + 1}.** ${x.titulo}`).join("\n");
+  const ok = (Treino.progresso && Treino.progresso._aulasOk) || [];
+  const lista = temasDa(lang).map((x, i) => `- ${ok.includes(x.id) ? "✅" : "**" + (i + 1) + ".**"} ${x.titulo}`).join("\n");
   const grupos = [...gruposDe(lang)].map(([g, nomes]) =>
     `- **${g}** (${nomes.length}): ${nomes.slice(0, 6).join(", ")}${nomes.length > 6 ? "..." : ""}`).join("\n");
   return {
-    texto: `### Trilha de ${NOMES[lang]}\nAulas em ordem (digite {{/proximo}} pra seguir):\n${lista}` +
+    texto: `### Trilha de ${NOMES[lang]}\n**Como funciona:** eu te ensino uma aula, no final te passo um **desafio** sobre ela, e só quando você acertar a gente vai pro **próximo passo**. Assim o conteúdo entra na cabeça de verdade. 🧠\n\nAulas em ordem:\n${lista}` +
       (grupos ? `\n\n### Consulta: mais ${referenciasDa(lang).length} coisas de ${NOMES[lang]}\nÉ só digitar o nome de qualquer uma:\n${grupos}\n\nDigite {{/indice}} pra ver a lista completa.` : ""),
-    sugestoes: temasDa(lang).slice(0, 5).map(x => x.titulo),
+    sugestoes: ["▶ começar a trilha", ...temasDa(lang).slice(0, 4).map(x => x.titulo)],
   };
 }
 
@@ -350,13 +460,20 @@ function indice(lang) {
 
 function proximaAula() {
   const lang = estado.lang || "python";
+  const P = WCDEV.professor;
+  // aula guiada: só vai pro próximo passo depois do desafio da aula atual
+  if (P) {
+    const portao = P.portaoDaAula();
+    if (portao) return portao;
+  }
   const lista = temasDa(lang);
   const ultima = estado.ultimaAula;
   let i = ultima && ultima.lang === lang ? lista.indexOf(ultima) + 1 : 0;
   if (i >= lista.length) {
     return { texto: `🎉 Você terminou a trilha de **${NOMES[lang]}**! Quer começar outra?`, sugestoes: ["/pawn", "/python", "/html", "/css", `/treinar ${lang}`] };
   }
-  return usarTema(lista[i]);
+  const aula = usarTema(lista[i]);
+  return P ? P.aulaComDesafio(lista[i], aula, i + 1, lista.length) : aula;
 }
 
 function usarTema(tema, ctx) {
@@ -369,6 +486,7 @@ function usarTema(tema, ctx) {
   }
   if (ctx && WCDEV.cerebro) {
     const v = WCDEV.cerebro.vestir(tema, ctx);
+    if (tema.lang !== "conversa" && !tema.ref && WCDEV.desafiosAula && WCDEV.desafiosAula[tema.id] && !Treino.ativo) v.sugestoes.unshift("🎯 desafio desta aula");
     if (tema.lang !== "conversa" && !tema.ref && !v.sugestoes.includes("/proximo")) v.sugestoes.push("/proximo");
     return v;
   }
@@ -482,6 +600,8 @@ function pareceProgramacao(t) {
 
 /* ---------- Revisão de código colado ---------- */
 function revisarCodigo(codigo, langEscolhida) {
+  const lang0 = langEscolhida || (WCDEV.revisor && WCDEV.revisor.detectar(codigo));
+  if (lang0 === "pawn" && WCDEV.analisador) return analisarPawn(codigo);
   const r = WCDEV.revisor && WCDEV.revisor.analisar(codigo, langEscolhida);
   if (!r) return null;
   atualizarLang(r.lang);
@@ -491,7 +611,7 @@ function revisarCodigo(codigo, langEscolhida) {
   if (r.resumo) texto += r.resumo + "\n";
   if (!r.problemas.length) {
     texto += "✅ **Não achei erros comuns.** Boa!\n(Eu confiro os erros mais frequentes, mas não executo o código: teste também no " +
-      ({ pawn: "compilador", python: "Python", html: "navegador", css: "navegador" })[r.lang] + ".)";
+      ({ pawn: "compilador", python: "Python", html: "navegador", css: "navegador", javascript: "navegador (Console, F12)" })[r.lang] + ".)";
   } else {
     if (erros.length) texto += `\n**Erros (${erros.length}):**\n${erros.slice(0, 10).map(e => `- **Linha ${e.linha}:** ${e.msg}`).join("\n")}\n`;
     if (outros.length) texto += `\n**Avisos e dicas (${outros.length}):**\n${outros.slice(0, 8).map(e => `- **Linha ${e.linha}:** ${e.msg}`).join("\n")}\n`;
@@ -504,10 +624,61 @@ function revisarCodigo(codigo, langEscolhida) {
   return { texto, sugestoes: botoes.concat(r.usados).slice(0, 8), preview };
 }
 
+/* ---------- Análise estática completa (Pawn) ---------- */
+function resumoAnalise(a) {
+  const c = { erro: 0, provavel: 0, verificar: 0, sugestao: 0 };
+  a.achados.forEach(x => c[x.nivel]++);
+  c.sintaxe = a.sintaxe.filter(x => x.tipo === "erro").length;
+  return c;
+}
+function analisarPawn(codigo) {
+  const A = WCDEV.analisador;
+  const a = A.analisar(codigo, "pawn");
+  atualizarLang("pawn");
+  estado.ultimoCodigo = { codigo, lang: "pawn" };
+  const c = resumoAnalise(a);
+  if (WCDEV.motor) WCDEV.motor.passo("Análise", `revisor de sintaxe + ${A.regras.pawn.length} regras de lógica/segurança: ${c.sintaxe} de sintaxe, ${c.erro} confirmado(s), ${c.provavel} provável(is), ${c.verificar} pra verificar, ${c.sugestao} sugestão(ões)`);
+  let texto = A.relatorio(a);
+  const temCoisa = c.sintaxe + c.erro + c.provavel + c.verificar;
+  texto += temCoisa ? "\n\nQuer que eu **aplique as correções**? Toque em **/corrigir** (eu mexo só nas linhas com problema e te mostro cada mudança)." : "\n\nQuer que eu explique o que cada linha faz? Toque em **/explicar**.";
+  const botoes = temCoisa ? ["/corrigir", "explica linha por linha"] : ["explica linha por linha", "/desafio pawn"];
+  return { texto, sugestoes: botoes.concat((WCDEV.revisor.analisar(codigo, "pawn") || { usados: [] }).usados).slice(0, 7) };
+}
+function corrigirPawn(original, r) {
+  const A = WCDEV.analisador;
+  const c = A.corrigir(r.codigo, "pawn");
+  const final = c.codigo;
+  const intencao = c.aplicadas.filter(x => x.suposicao);
+  const pendentes = c.puladas.filter(x => x.nivel !== "sugestao" && x.regra !== "nao-declarado" && x.regra !== "dados-salvos");
+  const contexto = c.puladas.filter(x => x.regra === "nao-declarado" || x.regra === "dados-salvos");
+  const restantesSintaxe = (WCDEV.revisor.analisar(final, "pawn") || { problemas: [] }).problemas.filter(p => p.tipo === "erro");
+  if (WCDEV.motor) WCDEV.motor.passo("Correção", `${r.mudancas.length} de sintaxe + ${c.aplicadas.length} de lógica/segurança, cada uma revalidada no revisor`);
+  atualizarLang("pawn");
+  if (!r.mudancas.length && !c.aplicadas.length) {
+    const a = c.analise;
+    if (!a.achados.length && !restantesSintaxe.length) return { texto: "> 🧠 Analisei sintaxe, lógica e segurança.\n✅ **Não achei nada pra corrigir.** Se mesmo assim não funciona, me conta o que acontece (ou cola a mensagem de erro) que eu te ajudo.\n⚙️ Não compilei (não tem compilador aqui no navegador).", sugestoes: ["explica linha por linha"] };
+    return { texto: "> 🧠 Não apliquei nenhuma mudança automática: os pontos abaixo dependem de uma decisão sua.\n### 🔬 O que eu achei\n" + A.relatorio(a), sugestoes: ["explica linha por linha", "/editor"] };
+  }
+  estado.ultimoCodigo = { codigo: final, lang: "pawn" };
+  let texto = `> 🧠 Fiz ${r.mudancas.length ? `**${r.mudancas.length}** correção(ões) de sintaxe e ` : ""}**${c.aplicadas.length}** correção(ões) de lógica/segurança. Mexi **só nas linhas com problema**: o resto do seu código ficou igual. Cada mudança foi revalidada no revisor.\n`;
+  texto += `### 🔧 Código corrigido\n~~~pawn\n${final}\n~~~\n`;
+  const df = A.diff(original, final);
+  if (df) texto += "~~~diff\n" + df.replace(/~~~/g, "~ ~ ~") + "\n~~~\n";
+  if (r.mudancas.length) texto += "**Sintaxe:**\n" + r.mudancas.sort((a, b) => a.n - b.n).map(m => `- **Linha ${m.n}:** ${m.o}. ${m.porque.charAt(0).toUpperCase() + m.porque.slice(1)}`).join("\n") + "\n";
+  if (c.aplicadas.length) texto += "\n**Lógica e segurança:**\n" + c.aplicadas.map(x => `- **Linha ${x.linha}** (${x.suposicao ? "mudança de comportamento" : { erro: "erro confirmado", provavel: "problema provável", verificar: "proteção extra", sugestao: "melhoria" }[x.nivel]}): ${x.titulo.replace(/\*\*/g, "")} ${x.correcao}`).join("\n") + "\n";
+  if (intencao.length) texto += "\n**⚠️ O que eu assumi (confira se é o que você quer):**\n" + intencao.map(x => `- ${x.suposicao.charAt(0).toUpperCase() + x.suposicao.slice(1)}.`).join("\n") + "\n";
+  if (pendentes.length) texto += "\n**Não corrigi sozinho (precisa da sua decisão):**\n" + pendentes.slice(0, 6).map(x => `- **Linha ${x.linha}:** ${x.titulo.replace(/\*\*/g, "")} ${x.correcao}`).join("\n") + "\n";
+  if (contexto.length) texto += "\n**Fora deste trecho (confira no resto do gamemode):**\n" + contexto.map(x => `- ${x.titulo.replace(/\*\*/g, "")}`).join("\n") + "\n";
+  if (restantesSintaxe.length) texto += `\n**Ainda tem erro de sintaxe:**\n${restantesSintaxe.map(e => `- **Linha ${e.linha}:** ${e.msg}`).join("\n")}\n`;
+  texto += "\n⚙️ Eu **não compilei** (não tem compilador Pawn no navegador): compile no Pawno/Qawno pra confirmar.";
+  return { texto, sugestoes: ["colocar no editor", "explica linha por linha"] };
+}
+
 /* ---------- Corrigir e explicar código ---------- */
 function corrigirCodigo(codigo, lang) {
   const r = WCDEV.corretor && WCDEV.corretor.corrigir(codigo, lang);
   if (!r) return { texto: "Não consegui descobrir a linguagem desse código. Abra o **editor**, escolha a linguagem e toque em **🔧 Corrigir**.", sugestoes: ["/editor"] };
+  if (r.lang === "pawn" && WCDEV.analisador) return corrigirPawn(codigo, r);
   atualizarLang(r.lang);
   if (!r.mudancas.length) {
     if (!r.antes) return { texto: `> 🧠 Revisei o código ${NOMES[r.lang]} inteiro.\n✅ **Não achei nada pra corrigir.** Se mesmo assim não funciona, me conta o que acontece (ou a mensagem de erro) que eu te ajudo.`, sugestoes: ["/explicar"] };
@@ -532,10 +703,23 @@ function explicarCodigo(codigo, lang) {
   const r = WCDEV.revisor ? WCDEV.revisor.analisar(codigo, lang) : null;
   const erros = r ? r.problemas.filter(p => p.tipo === "erro").length : 0;
   let texto = `> 🧠 Li o seu código ${NOMES[lang]} e vou explicar o que cada parte faz, em português.\n`;
+  let achouPawn = 0;
+  if (lang === "pawn" && WCDEV.analisador) {
+    // antes de explicar, a análise: se tem bug, a pessoa precisa saber ANTES de aprender com o código
+    const a = WCDEV.analisador.analisar(codigo, "pawn");
+    const c = resumoAnalise(a);
+    achouPawn = c.sintaxe + c.erro + c.provavel;
+    if (WCDEV.motor) WCDEV.motor.passo("Análise", `antes de explicar: ${c.sintaxe} de sintaxe, ${c.erro} confirmado(s), ${c.provavel} provável(is), ${c.verificar} pra verificar`);
+    if (c.sintaxe + c.erro + c.provavel + c.verificar) {
+      texto = `> 🧠 Antes de explicar, analisei o código (sintaxe, lógica e segurança).\n### 🔬 Antes de tudo: o que eu achei\n` + WCDEV.analisador.relatorio(a, { curto: true }) +
+        "\n\nPra ver o **porquê** e a **correção** de cada um, peça **\"revisa esse código\"**. Agora a explicação 👇\n";
+    } else texto = "> 🧠 Analisei o código antes (sintaxe, lógica e segurança) e não achei problemas. Agora a explicação 👇\n";
+  }
   texto += WCDEV.explicador.explicar(codigo, lang);
   if (r && r.resumo) texto += "\n\n**Resumindo:** " + r.resumo;
-  if (erros) texto += `\n\n⚠️ Também achei **${erros} erro(s)** nesse código. Toque em **/corrigir** que eu conserto e explico.`;
-  return { texto, sugestoes: erros ? ["/corrigir", "/editor"] : ["/editor", `/desafio ${lang}`] };
+  if (erros && lang !== "pawn") texto += `\n\n⚠️ Também achei **${erros} erro(s)** nesse código. Toque em **/corrigir** que eu conserto e explico.`;
+  const temProblema = erros || achouPawn;
+  return { texto, sugestoes: temProblema ? ["/corrigir", "revisa esse código", "/editor"] : ["/editor", `/desafio ${lang}`] };
 }
 
 // o código mais recente: do chat, ou o que está no editor
@@ -600,7 +784,8 @@ function pensarInterno(entrada) {
     const [cmd, arg] = bruto.toLowerCase().split(/\s+/);
     const resto = bruto.slice(cmd.length).trim();
     const langArg = NOMES[arg] ? arg : null;
-    if (["/python", "/html", "/css", "/pawn"].includes(cmd)) {
+    if (cmd === "/js") return pensar("/javascript");
+    if (["/python", "/html", "/css", "/pawn", "/javascript"].includes(cmd)) {
       const lang = cmd.slice(1);
       atualizarLang(lang);
       estado.ultimaAula = null;
@@ -612,6 +797,7 @@ function pensarInterno(entrada) {
     if (cmd === "/ajuda") return usarTema(WCDEV.temas.find(x => x.id === "ajuda"));
     if (cmd === "/treinar" || cmd === "/treino") return Treino.iniciar(langArg || estado.lang);
     if (cmd === "/desafio" || cmd === "/desafios") {
+      if (/^(da |desta |dessa )?aula$/i.test(resto) && WCDEV.professor) return WCDEV.professor.abrirDesafioDaAula(estado.ultimaAula);
       if (/^sobre\s+/i.test(resto)) {
         const d = WCDEV.desafios.sobre(acharPorNome(resto.replace(/^sobre\s+/i, "")));
         return d ? Treino.abrir(d) : { texto: "Não achei esse assunto pra montar um desafio. Tente {{/desafio pawn}}." };
@@ -640,6 +826,27 @@ function pensarInterno(entrada) {
     if (cmd === "/sair") return Treino.sair();
     if (cmd === "/zerar") return Treino.zerar(langArg);
     if (cmd === "/porque" || cmd === "/pensamento") return M ? M.explicarRastro() : null;
+    if (cmd === "/resumo") return M ? M.resumo() : null;
+    if (cmd === "/modelo") return WCDEV.modeloLocal ? WCDEV.modeloLocal.painel() : null;
+    if (cmd === "/ia") {
+      if (!WCDEV.modeloLocal) return null;
+      if (!resto) return { texto: "Escreva a pergunta depois: {{/ia como faço um sistema de casas?}}", sugestoes: ["/modelo"] };
+      if (!WCDEV.modeloLocal.ativo()) return { texto: "O modelo local está **desligado**. Veja como ligar em **/modelo** (precisa de um modelo rodando no seu PC).", sugestoes: ["/modelo"] };
+      WCDEV.modeloLocal.perguntar(resto);   // assíncrono: a resposta vai aparecendo sozinha
+      return null;
+    }
+    const AP = WCDEV.aprendizagem;
+    if (AP) {
+      if (cmd === "/importar") return AP.abrirSeletor();
+      if (cmd === "/importados") return AP.listarImportados();
+      if (cmd === "/desfazer" && /^importa/i.test(resto)) return AP.desfazer();
+      if (cmd === "/apagar" && /^importa\S*\s+\S+/i.test(resto)) return AP.desfazer(resto.split(/\s+/)[1]);
+      if (cmd === "/apagar" && /^regra\s+\S+/i.test(resto)) return AP.apagarRegra(resto.split(/\s+/)[1]);
+      if (cmd === "/regra") return AP.criarRegra(bruto);
+      if (cmd === "/regras") return AP.listarRegras();
+      if (cmd === "/feedback") return /export/i.test(resto) ? AP.exportarFeedback() : AP.listarFeedback();
+      if (cmd === "/aprendizado" || cmd === "/aprendizagem") return AP.comoAprendo();
+    }
     if (cmd === "/progresso" || cmd === "/boletim") return WCDEV.professor ? WCDEV.professor.boletim() : Treino.status();
     if (cmd === "/ensinar") return Aprendizado.ensinar(bruto);
     if (cmd === "/esquecer") return Aprendizado.esquecer(bruto);
@@ -654,6 +861,11 @@ function pensarInterno(entrada) {
   }
 
   if (t0 === " colocar no editor ") return pensar("/noeditor");
+  if (/^ (desafio desta aula|desafio da aula|fazer o desafio|fazer o desafio da aula|quero o desafio) $/.test(t0)) return pensar("/desafio da aula");
+  if (/^ (como (voce|vc) aprende|voce aprende|vc aprende|voce e treinada|voce treina|como funciona seu aprendizado|voce aprende sozinha|voce aprende com a gente) ?$/.test(t0)) return pensar("/aprendizado");
+  if (/^ (resume|resumo|resuma|faz um resumo|me da um resumo)( d[ae])?( (a|essa|esta|nossa))?( conversa| papo| que a gente fez| que fizemos)? $|^ o que a gente (fez|viu)( ate agora)? $/.test(t0)) return pensar("/resumo");
+  if (/^ (proximo passo|ir pro proximo passo|proxima aula|bora pro proximo|bora|proximo) $/.test(t0) && !Treino.ativo) return pensar("/proximo");
+  if (/^ (proximo passo|ir pro proximo passo|proxima aula|comecar|comecar a trilha|comecar do comeco|bora comecar|comecar a aula 1) $/.test(t0)) return pensar("/proximo");
 
   // ===== Teste rápido =====
   if (estado.quiz) {
@@ -675,7 +887,7 @@ function pensarInterno(entrada) {
 
   // ===== Referências ao que já foi conversado ("agora corrige", "explica esse código", "faz igual pro colete") =====
   if (M && !bruto.includes("\n")) {
-    const ref = M.referencia(t0, bruto) || M.fazIgual(t0, bruto);
+    const ref = M.linhaN(t0) || M.erroContinua(t0) || M.mesmaCoisaEmOutra(t0) || M.referencia(t0, bruto) || M.fazIgual(t0, bruto);
     if (ref) return ref;
   }
 
@@ -739,7 +951,7 @@ function pensarInterno(entrada) {
 
   // tecnologia que eu não ensino / pedido sem detalhe / "deu erro" sem código
   if (M) {
-    const r = M.foraDaBase(t, bruto) || M.faltaDetalhe(t) || M.semCodigo(t);
+    const r = M.foraDaBase(t, bruto) || M.diagnosticar(t, lang) || M.faltaDetalhe(t) || M.semCodigo(t);
     if (r) return r;
   }
 
@@ -1030,6 +1242,7 @@ function aoEntrar(st, acabouDeAtivar) {
   usuarioCarregado = Conta.atual.u;
   Treino.carregarUsuario();
   Aprendizado.carregar();
+  if (WCDEV.aprendizagem) { WCDEV.aprendizagem.carregar(); WCDEV.aprendizagem.aplicarRegrasUsuario(); }
   Editor.carregarRascunho();
   limparChat();
   if (acabouDeAtivar) responder({ texto: `✅ **Plano ativado!** Você tem **${st.dias} dias** de acesso (até ${Util.dataHora(st.expira)}). Bons estudos! 🚀` }, true);
@@ -1069,7 +1282,7 @@ elTexto.addEventListener("input", ajustarAltura);
 
 // No celular, quando o teclado abre, rola até a última mensagem
 elTexto.addEventListener("focus", () => {
-  setTimeout(() => (elMensagens.scrollTop = elMensagens.scrollHeight), 300);
+  setTimeout(() => rolagem.descer(), 300);
 });
 
 // Tudo carregou: esconde o aviso de erro

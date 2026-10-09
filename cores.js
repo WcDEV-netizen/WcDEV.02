@@ -146,6 +146,31 @@ const Cores = (() => {
     return out;
   }
 
+  /* ---------- JavaScript ---------- */
+  const KW_JS = conjunto("const let var function return if else for while do switch case default break continue new class extends this super try catch finally throw async await of in typeof instanceof import export from as yield delete void null undefined true false");
+  const JS_GLOBAIS = conjunto("console document window Math JSON Number String Array Object Promise Date localStorage setTimeout setInterval clearInterval fetch parseInt parseFloat isNaN Error Map Set");
+  const RE_JS = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?|`(?:\\.|[^`\\])*`?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)(?=(\s*\()?)/g;
+  function js(cod) {
+    let out = "", ult = 0, m;
+    RE_JS.lastIndex = 0;
+    while ((m = RE_JS.exec(cod))) {
+      if (m[0] === "") { RE_JS.lastIndex++; continue; }
+      out += esc(cod.slice(ult, m.index));
+      if (m[1]) out += sp("com", m[1]);
+      else if (m[2]) out += sp("str", m[2]);
+      else if (m[3]) out += sp("num", m[3]);
+      else {
+        const w = m[4];
+        if (KW_JS.has(w)) out += sp("kw", w);
+        else if (JS_GLOBAIS.has(w)) out += sp("cb", w);
+        else if (m[5]) out += sp("fn", w);
+        else out += esc(w);
+      }
+      ult = RE_JS.lastIndex;
+    }
+    return out + esc(cod.slice(ult));
+  }
+
   function colorir(cod, lang) {
     if (cod.length > 120000) return esc(cod);   // código gigante: sem cor, pra não travar
     try {
@@ -153,6 +178,7 @@ const Cores = (() => {
       if (lang === "python" || lang === "py") return python(cod);
       if (lang === "html") return html(cod);
       if (lang === "css") return css(cod);
+      if (lang === "javascript" || lang === "js") return js(cod);
     } catch (e) { /* se der qualquer problema, mostra sem cor */ }
     return esc(cod);
   }

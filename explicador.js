@@ -165,6 +165,41 @@ const Explicador = {
     return frases.length ? frases.join(", ").replace(/^./, c => c.toUpperCase()) + "." : null;
   },
 
+  linhaJs(l) {
+    let m;
+    if (/^[}\])]+;?$/.test(l)) return "Fecha o bloco.";
+    if ((m = l.match(/^(const|let|var)\s+([\w$]+)\s*=\s*\(?([^)=]*)\)?\s*=>\s*(.*)$/))) return `Cria a função **${m[2]}** (arrow function) que recebe ${m[3].trim() || "nada"}${m[4] && !m[4].startsWith("{") ? ` e devolve **${m[4].replace(/;$/, "")}**` : ""}.`;
+    if ((m = l.match(/^(?:async\s+)?function\s+([\w$]+)\s*\(([^)]*)\)/))) return `Cria a função **${m[1]}**${/^async/.test(l) ? " (assíncrona: pode usar await)" : ""} que recebe ${m[2].trim() || "nada"}.`;
+    if ((m = l.match(/^(const|let|var)\s+([\w$]+)\s*=\s*document\.(getElementById|querySelector(?:All)?)\s*\(\s*["'`]([^"'`]+)/))) return `Pega ${m[3] === "querySelectorAll" ? "**todos** os elementos" : "o elemento"} **${m[4]}** da página e guarda em **${m[2]}**.`;
+    if ((m = l.match(/^(const|let|var)\s+([\w$]+)\s*=\s*(.+?);?$/))) return `Cria ${m[1] === "const" ? "a constante" : "a variável"} **${m[2]}** valendo ${m[3]}${m[1] === "const" ? " (não pode mudar depois)" : ""}.`;
+    if ((m = l.match(/^console\.log\s*\((.*)\);?$/))) return `Mostra no Console: ${m[1]}.`;
+    if ((m = l.match(/^console\.assert\s*\((.*)\);?$/))) return `Teste: avisa no Console se **${m[1].split(",")[0]}** for falso.`;
+    if ((m = l.match(/^(?:\}\s*)?else\s+if\s*\((.*)\)\s*\{?$/))) return `Senão, se ${m[1]}:`;
+    if (/^(?:\}\s*)?else\s*\{?$/.test(l)) return "Senão (se nada acima deu certo):";
+    if (/^if\s*\(/.test(l)) {
+      let p = 0, k = l.indexOf("(");
+      for (let i = k; i < l.length; i++) { if (l[i] === "(") p++; else if (l[i] === ")") { p--; if (!p) { k = i; break; } } }
+      const cond = l.slice(l.indexOf("(") + 1, k), resto = l.slice(k + 1).trim().replace(/^\{$/, "");
+      return resto ? `Se ${cond}, faz: ${resto.replace(/;$/, "")}.` : `Se ${cond}, roda o bloco.`;
+    }
+    if ((m = l.match(/^for\s*\(\s*(?:const|let)\s+(\w+)\s+of\s+(.+)\)\s*\{?$/))) return `Pra cada item de **${m[2]}**, chamado **${m[1]}**:`;
+    if ((m = l.match(/^for\s*\((.*)\)\s*\{?$/))) return `Repete: ${m[1]}.`;
+    if ((m = l.match(/^while\s*\((.*)\)\s*\{?$/))) return `Repete enquanto ${m[1]}.`;
+    if ((m = l.match(/^return\s*(.*?);?$/))) return m[1] ? `Devolve **${m[1]}** e termina a função.` : "Termina a função.";
+    if ((m = l.match(/^([\w$.]+)\.addEventListener\s*\(\s*["'`](\w+)/))) return `Quando acontecer **${m[2]}** em **${m[1]}**, roda a função abaixo.`;
+    if ((m = l.match(/^([\w$.]+)\.textContent\s*=\s*(.+?);?$/))) return `Troca o texto de **${m[1]}** por ${m[2]}.`;
+    if ((m = l.match(/^([\w$.]+)\.push\s*\((.*)\);?$/))) return `Adiciona ${m[2]} no fim da lista **${m[1]}**.`;
+    if (/^try\s*\{?$/.test(l)) return "Tenta rodar o bloco abaixo (se der erro, vai pro catch).";
+    if ((m = l.match(/^(?:\}\s*)?catch\s*\((\w+)\)/))) return `Se deu erro, ele fica em **${m[1]}** e roda este bloco.`;
+    if ((m = l.match(/^(?:const|let)?\s*[\w$]*\s*=?\s*await\s+(.+?);?$/))) return `Espera **${m[1]}** terminar antes de seguir.`;
+    if ((m = l.match(/^import\s+(.+)\s+from\s+["'`]([^"'`]+)/))) return `Traz **${m[1]}** do arquivo **${m[2]}**.`;
+    if (/^export\s/.test(l)) return "Deixa isso disponível pra outros arquivos (export).";
+    if ((m = l.match(/^([\w$.\[\]]+)\s*(\+\+|--);?$/))) return `${m[2] === "++" ? "Soma" : "Tira"} 1 em **${m[1]}**.`;
+    if ((m = l.match(/^([\w$.\[\]]+)\s*([-+*/]?=)\s*(.+?);?$/))) return { "=": `Guarda ${m[3]} em **${m[1]}**.`, "+=": `Soma ${m[3]} em **${m[1]}**.`, "-=": `Tira ${m[3]} de **${m[1]}**.` }[m[2]] || `Atualiza **${m[1]}**.`;
+    if ((m = l.match(/^([\w$.]+)\s*\((.*)\);?$/))) return `Chama **${m[1]}**${m[2] ? ` com ${m[2]}` : ""}.`;
+    return null;
+  },
+
   linhaCss(l) {
     let m;
     if ((m = l.match(/^@media\s*(.*)\{/))) return `Estilos que só valem quando ${m[1].replace(/max-width\s*:\s*(\w+)/, "a tela tiver até $1").replace(/min-width\s*:\s*(\w+)/, "a tela tiver pelo menos $1").replace(/[()]/g, "").trim()}.`;
@@ -193,13 +228,13 @@ const Explicador = {
 
   explicar(codigo, lang, opcoes = {}) {
     lang = lang || (WCDEV.revisor && WCDEV.revisor.detectar(codigo)) || "pawn";
-    const fn = { pawn: "linhaPawn", python: "linhaPython", html: "linhaHtml", css: "linhaCss" }[lang];
+    const fn = { pawn: "linhaPawn", python: "linhaPython", html: "linhaHtml", css: "linhaCss", javascript: "linhaJs" }[lang];
     const linhas = codigo.split("\n");
     const itens = [];
     linhas.forEach((bruta, i) => {
       let l = bruta.trim();
       if (!l) return;
-      const comentario = (lang === "python" && l.startsWith("#")) || ((lang === "pawn" || lang === "css") && /^(\/\/|\/\*|\*)/.test(l));
+      const comentario = (lang === "python" && l.startsWith("#")) || ((lang === "pawn" || lang === "css" || lang === "javascript") && /^(\/\/|\/\*|\*)/.test(l));
       if (comentario) {
         itens.push({ n: i + 1, l, e: `Comentário: ${l.replace(/^(\/\/|#|\/\*|\*)\s*/, "").replace(/\*\/$/, "")}` });
         return;

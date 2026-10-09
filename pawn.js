@@ -385,11 +385,15 @@ CMD:vida(playerid, params[])
 
 CMD:dargrana(playerid, params[])
 {
+    if (!IsPlayerAdmin(playerid))   // só admin: senão qualquer um cria dinheiro
+        return SendClientMessage(playerid, 0xFF0000FF, "Sem permissão.");
     new id, valor;
     if (sscanf(params, "ui", id, valor))
         return SendClientMessage(playerid, -1, "Use: /dargrana [id] [valor]");
     if (!IsPlayerConnected(id))
         return SendClientMessage(playerid, 0xFF0000FF, "Jogador não conectado.");
+    if (valor < 1)
+        return SendClientMessage(playerid, 0xFF0000FF, "Valor inválido.");
     GivePlayerMoney(id, valor);
     return 1;
 }
@@ -642,6 +646,7 @@ CMD:daradmin(playerid, params[])
     if (!IsPlayerAdmin(playerid)) return 0;   // só quem logou no RCON
     new id, nivel;
     if (sscanf(params, "ui", id, nivel)) return SendClientMessage(playerid, -1, "Use: /daradmin [id] [nível]");
+    if (!IsPlayerConnected(id)) return SendClientMessage(playerid, -1, "Jogador offline.");
     Jogador[id][jAdmin] = nivel;
     return 1;
 }
@@ -687,6 +692,7 @@ CMD:ir(playerid, params[])   // ir até outro jogador
 {
     new id, Float:x, Float:y, Float:z;
     if (sscanf(params, "u", id)) return SendClientMessage(playerid, -1, "Use: /ir [id]");
+    if (!IsPlayerConnected(id)) return SendClientMessage(playerid, -1, "Jogador offline.");   // senão vai pro 0,0,0
     GetPlayerPos(id, x, y, z);
     SetPlayerInterior(playerid, GetPlayerInterior(id));
     SetPlayerPos(playerid, x + 1.0, y, z);
@@ -1785,8 +1791,11 @@ CMD:vipcarro(playerid, params[])
 
 CMD:prender(playerid, params[])
 {
+    if (!IsPlayerAdmin(playerid)) return SendClientMessage(playerid, -1, "Sem permissão.");
     new id, minutos;
     if (sscanf(params, "ui", id, minutos)) return SendClientMessage(playerid, -1, "Use: /prender [id] [minutos]");
+    if (!IsPlayerConnected(id)) return SendClientMessage(playerid, -1, "Jogador offline.");
+    if (minutos < 1) return SendClientMessage(playerid, -1, "Tempo inválido.");
     TempoPreso[id] = minutos * 60;
     SetPlayerInterior(id, 6);
     SetPlayerPos(id, 264.0, 77.5, 1001.0);   // cela da LSPD
@@ -2100,11 +2109,15 @@ SendClientMessageToAll(0xAFAFAFFF, msg);`,
     ],
     solucao: `CMD:dargrana(playerid, params[])
 {
+    if (!IsPlayerAdmin(playerid))   // só admin: senão qualquer um cria dinheiro
+        return SendClientMessage(playerid, 0xFF0000FF, "Sem permissão.");
     new id, valor;
     if (sscanf(params, "ui", id, valor))
         return SendClientMessage(playerid, -1, "Use: /dargrana [id] [valor]");
     if (!IsPlayerConnected(id))
         return SendClientMessage(playerid, 0xFF0000FF, "Jogador não conectado.");
+    if (valor < 1)
+        return SendClientMessage(playerid, 0xFF0000FF, "Valor inválido.");
     GivePlayerMoney(id, valor);
     return 1;
 }`,

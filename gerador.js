@@ -294,7 +294,7 @@ CMD:${nome}(playerid, params[])
     if (req.hud) L.push("", "stock AtualizarHudLevel(playerid)", "{", "    new txt[48];",
       "    format(txt, sizeof(txt), \"Level %d  ~b~%d/%d XP\", Level[playerid][lvNivel], Level[playerid][lvXP], XpNecessaria(Level[playerid][lvNivel]));",
       "    PlayerTextDrawSetString(playerid, HudLevel[playerid], txt);", "    PlayerTextDrawShow(playerid, HudLevel[playerid]);", "}");
-    L.push("", "stock DarXP(playerid, quantidade)", "{", "    Level[playerid][lvXP] += quantidade;",
+    L.push("", "stock DarXP(playerid, quantidade)", "{", "    if (!IsPlayerConnected(playerid) || quantidade <= 0) return;   // id inválido ou XP negativo: ignora", "    Level[playerid][lvXP] += quantidade;",
       "    while (Level[playerid][lvXP] >= XpNecessaria(Level[playerid][lvNivel]))", "    {",
       "        Level[playerid][lvXP] -= XpNecessaria(Level[playerid][lvNivel]);", "        Level[playerid][lvNivel]++;",
       "        SetPlayerScore(playerid, Level[playerid][lvNivel]);", "",
@@ -581,7 +581,7 @@ ${partes.join("\n")}
     const pede = / (cria|crie|criar|faz|faca|fazer|gera|gere|gerar|escreve|escreva|monta|monte|quero|preciso|me da|me de|programa|codigo de|codigo pra|codigo para|codigo que) /.test(t);
     if (!pede) return null;
     const ehPawn = lang === "pawn" || (!lang && estado.lang === "pawn") ||
-      (/ (comando|cmd|payday|salario|mensagem automatica|mensagens automaticas|anuncio automatico|aviso automatico) /.test(t) && !/ (python|html|css) /.test(t));
+      (/ (comando|cmd|payday|salario|mensagem automatica|mensagens automaticas|anuncio automatico|aviso automatico|sistema de (level|nivel|xp|experiencia)) /.test(t) && !/ (python|html|css|javascript|js) /.test(t));
     if (ehPawn) {
       if (/ (comando|cmd) /.test(t) || /\/[a-z]/.test(bruto)) { const r = this.comandoPawn(bruto, t); if (r) return r; }
       const s = this.sistemaPawn(bruto, t);

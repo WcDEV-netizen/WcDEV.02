@@ -35,6 +35,9 @@ CMD:pagar(playerid, params[])       // zcmd
 {
     new alvo, valor;
     if (sscanf(params, "ui", alvo, valor)) return SendClientMessage(playerid, -1, "Use: /pagar [id] [valor]"); // sscanf
+    if (!IsPlayerConnected(alvo)) return SendClientMessage(playerid, -1, "Jogador offline.");               // nativa
+    if (valor < 1 || valor > GetPlayerMoney(playerid)) return SendClientMessage(playerid, -1, "Valor inválido.");
+    DarDinheiro(playerid, -valor);
     DarDinheiro(alvo, valor);
     return 1;
 }

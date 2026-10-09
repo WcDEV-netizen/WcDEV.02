@@ -162,10 +162,14 @@ const Professor = {
     { re: / (corrida|race|drift) /, titulo: "Servidor de corrida", lang: "pawn", passos: [
       ["Criar veículos", "Veículos"], ["Checkpoints de corrida", "SetPlayerRaceCheckpoint"], ["Contagem regressiva", "contagem regressiva"],
       ["Velocímetro", "velocímetro"], ["Tuning", "AddVehicleComponent"], ["Timers pra cronometrar", "GetTickCount"]] },
-    { re: / (site|pagina|portfolio|landing) /, titulo: "Seu primeiro site", lang: "html", passos: [
+    { re: / (site|pagina|portfolio|landing) (?!interativo)/, titulo: "Seu primeiro site", lang: "html", passos: [
       ["Estrutura básica do HTML", "Estrutura básica de uma página"], ["Títulos, textos e imagens", "Títulos e parágrafos"],
       ["Links e menu", "menu de navegação"], ["Ligar o CSS", "O que é CSS e como ligar no HTML"], ["Cores e fontes", "Cores e fundos"],
       ["Layout com flexbox", "Flexbox (alinhar e centralizar)"], ["Deixar responsivo", "Site responsivo (celular)"], ["Publicar de graça", "publicar site"]] },
+    { re: / (site interativo|jogo no navegador|jogo em javascript|jogo javascript|app web|aplicacao web|lista de tarefas) /, titulo: "Site interativo com JavaScript", lang: "javascript", passos: [
+      ["HTML e CSS básicos", "html:Estrutura básica de uma página"], ["Variáveis e tipos", "Variáveis: let, const e tipos"], ["Condições e loops", "if, else e switch"],
+      ["Funções", "Funções e arrow functions"], ["Arrays e objetos", "Arrays e seus métodos (push, map, filter)"], ["Mexer na página (DOM)", "DOM: mexendo na página"],
+      ["Eventos (cliques)", "Eventos: clique, teclado e formulário"], ["Código assíncrono", "Assíncrono: setTimeout, Promise e async/await"], ["Projeto: lista de tarefas", "Projeto: lista de tarefas"]] },
     { re: / (jogo) .*(python)|(pygame) /, titulo: "Jogo em Python", lang: "python", passos: [
       ["Variáveis e input", "Variáveis"], ["if/else", "if, elif e else (decisões)"], ["Loops", "while (repetir enquanto)"],
       ["Números aleatórios", "Módulos e import"], ["Funções", "Funções"], ["Projeto: jogo de adivinhação", "Projeto: jogo de adivinhação"],
@@ -176,12 +180,13 @@ const Professor = {
   ],
 
   acharPasso(titulo, lang) {
+    if (/^\w+:/.test(titulo)) { const [l, t] = [titulo.split(":")[0], titulo.slice(titulo.indexOf(":") + 1)]; return WCDEV.temas.find(x => x.titulo === t && x.lang === l); }
     return WCDEV.temas.find(x => x.titulo === titulo && x.lang === lang) || WCDEV.temas.find(x => x.titulo === titulo && x.lang !== "conversa");
   },
 
   roteiro(t) {
     if (!/ (quero|queria|vou|como|preciso|bora|quero fazer|quero criar|criar|fazer|montar|abrir) /.test(t)) return null;
-    if (!/ (servidor|gamemode|gm|site|pagina|portfolio|jogo|bot|projeto|server|rpg|roleplay|dm|corrida) /.test(t)) return null;
+    if (!/ (servidor|gamemode|gm|site|pagina|portfolio|jogo|bot|projeto|server|rpg|roleplay|dm|corrida|app|aplicacao|lista) /.test(t)) return null;
     const r = this.ROTEIROS.find(x => x.re.test(t));
     if (!r) {
       if (/ (servidor|gamemode|gm|server) /.test(t) && / (quero|queria|vou|bora|pretendo|preciso) /.test(t) && / (fazer|criar|abrir|ter|montar|comecar) /.test(t) &&
@@ -201,8 +206,88 @@ const Professor = {
     atualizarLang(r.lang);
     return {
       texto: `> 🧠 Você quer construir um projeto de verdade. Montei o caminho na ordem que eu ensinaria, do mais básico ao mais avançado.\n### 🗺️ Roteiro: ${r.titulo}\n${passos}\n\nVai no seu ritmo: um passo por dia já é ótimo. Toque no passo que quer estudar agora 👇`,
-      sugestoes: [...new Set([proximo ? proximo[1] : r.passos[0][1], ...r.passos.slice(0, 5).map(p => p[1])])].slice(0, 6),
+      sugestoes: [...new Set([proximo ? proximo[1] : r.passos[0][1], ...r.passos.slice(0, 5).map(p => p[1])].map(x => x.replace(/^\w+:/, "")))].slice(0, 6),
     };
+  },
+
+  /* ================= AULA GUIADA: aula → desafio → próximo passo ================= */
+  montarDesafio(aula) {
+    const d = aula && WCDEV.desafiosAula && WCDEV.desafiosAula[aula.id];
+    if (!d) return null;
+    return { ...d, lang: aula.lang, titulo: `Desafio da aula: ${aula.titulo}`, daAula: true, aulaTitulo: aula.titulo };
+  },
+  aulaFeita(id) {
+    const p = Treino.progresso || {};
+    return (p._aulasOk || []).includes(id) || (p._aulasPuladas || []).includes(id);
+  },
+  // mostra a aula e já passa o desafio dela (no fim da mesma mensagem)
+  aulaComDesafio(aula, resposta, n, total) {
+    const ex = this.montarDesafio(aula);
+    const topo = `> 📚 Aula ${n} de ${total} da trilha de ${NOMES[aula.lang]}. Lê com calma: no final tem um desafio pra fixar.\n`;
+    if (!ex || this.aulaFeita(aula.id)) return { ...resposta, texto: topo + resposta.texto };
+    const d = Treino.abrir(ex);
+    return {
+      texto: topo + resposta.texto + "\n\n" + d.texto,
+      sugestoes: ["/editor", "/dica", "explica melhor", "/pular"],
+      preview: resposta.preview,
+    };
+  },
+  abrirDesafioDaAula(aula) {
+    if (!aula) return { texto: "Primeiro escolhe uma aula da trilha (tipo {{/pawn}}) que eu te passo o desafio dela. 🙂", sugestoes: ["/pawn", "/python", "/html", "/css"] };
+    const ex = this.montarDesafio(aula);
+    if (!ex) return { texto: `A aula **${aula.titulo}** não tem um desafio próprio. Quer um desafio surpresa de ${NOMES[aula.lang]}?`, sugestoes: [`/desafio ${aula.lang}`, "/proximo"] };
+    return Treino.abrir(ex);
+  },
+  // tentou ir pro próximo passo sem fazer o desafio da aula atual
+  portaoDaAula() {
+    const ativo = Treino.ativo;
+    if (ativo && ativo.daAula) {
+      return {
+        texto: `Calma, quase lá! 😄 Antes do próximo passo, faz o **desafio da aula ${ativo.aulaTitulo}**. É ele que faz o conteúdo **entrar na cabeça**.\n\n**Relembrando:** ${ativo.enunciado}\n\nSe travou, peça uma **/dica**. Se quiser mesmo seguir sem fazer, use **/pular**.`,
+        sugestoes: ["/editor", "/dica", "/pular"],
+      };
+    }
+    const aula = estado.ultimaAula;
+    if (aula && this.montarDesafio(aula) && !this.aulaFeita(aula.id) && (Treino.progresso || {})._vistas && Treino.progresso._vistas.includes(aula.id)) {
+      const d = Treino.abrir(this.montarDesafio(aula));
+      return { texto: `Antes de ir pro próximo passo, falta o desafio da aula **${aula.titulo}** 👇\n\n` + d.texto, sugestoes: ["/editor", "/dica", "/pular"] };
+    }
+    return null;
+  },
+  aulaConcluida(ex, avisos, preview) {
+    const p = Treino.progresso;
+    p._aulasOk = p._aulasOk || [];
+    if (!p._aulasOk.includes(ex.aula)) p._aulasOk.push(ex.aula);
+    const d = p._desafios || {};
+    d[ex.lang] = (d[ex.lang] || 0) + 1;
+    p._desafios = d;
+    Treino.salvarProgresso();
+    const lista = temasDa(ex.lang);
+    const i = lista.findIndex(x => x.id === ex.aula);
+    const prox = lista[i + 1];
+    const feitas = lista.filter(a => p._aulasOk.includes(a.id)).length;
+    const elogio = ["Mandou muito bem!", "Isso aí! Entrou na cabeça! 🧠", "Perfeito, programador(a)!", "Acertou! 😎", "Show de bola!"][Math.floor(Math.random() * 5)];
+    return {
+      texto: `### ✅ ${elogio}\nVocê fez o desafio da aula **${ex.aulaTitulo}**. Trilha de ${NOMES[ex.lang]}: ${this.barra(feitas, lista.length)} **${feitas}/${lista.length}** aulas concluídas.` +
+        (avisos && avisos.length ? `\n\nSó umas dicas pra ficar ainda melhor:\n${avisos.slice(0, 4).map(a => `- Linha ${a.linha}: ${a.msg}`).join("\n")}` : "") +
+        (prox ? `\n\n**Próximo passo:** ${prox.titulo} 👉` : `\n\n🎉 Essa era a última aula da trilha de ${NOMES[ex.lang]}!`),
+      sugestoes: prox ? ["▶ próximo passo", "teste rápido", "/desafio " + ex.lang] : ["/desafio " + ex.lang, "/missao " + ex.lang, "/boletim"],
+      preview,
+    };
+  },
+  pularDesafioDaAula(ex) {
+    const p = Treino.progresso;
+    p._aulasPuladas = p._aulasPuladas || [];
+    if (!p._aulasPuladas.includes(ex.aula)) p._aulasPuladas.push(ex.aula);
+    const aj = p._ajuda || {};
+    aj[ex.lang] = (aj[ex.lang] || 0) + 1;
+    p._ajuda = aj;
+    Treino.salvarProgresso();
+    Treino.ativo = null;
+    if (WCDEV.editor) WCDEV.editor.fecharExercicio();
+    const r = proximaAula();
+    r.texto = `> ⏭️ Pulei o desafio da aula **${ex.aulaTitulo}**. Depois você pode voltar nele com **/desafio da aula** (vale a pena!).\n` + r.texto;
+    return r;
   },
 
   /* ================= DIFICULDADE QUE SE ADAPTA ================= */
@@ -236,11 +321,12 @@ const Professor = {
     const vistas = p._vistas || [];
     const d = p._desafios || {};
     const q = p._quiz || { certas: 0, total: 0 };
-    const linhas = ["pawn", "python", "html", "css"].map(l => {
+    const linhas = ["pawn", "python", "html", "css", "javascript"].map(l => {
       const aulas = temasDa(l);
       const vistasL = aulas.filter(a => vistas.includes(a.id)).length;
       const ex = Treino.feitos(l).length, totEx = Treino.lista(l).length;
-      return `- **${NOMES[l]}**: aulas ${this.barra(vistasL, aulas.length)} ${vistasL}/${aulas.length} · exercícios ${ex}/${totEx} · desafios ${d[l] || 0}`;
+      const ok = aulas.filter(a => (p._aulasOk || []).includes(a.id)).length;
+      return `- **${NOMES[l]}**: aulas ${this.barra(ok, aulas.length)} ${ok}/${aulas.length} concluídas (${vistasL} vistas) · exercícios ${ex}/${totEx} · desafios ${d[l] || 0}`;
     });
     const total = linhas.length;
     const nivel = vistas.length + Object.values(d).reduce((a, b) => a + b, 0) * 2 + (q.certas || 0);

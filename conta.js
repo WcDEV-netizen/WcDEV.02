@@ -193,7 +193,7 @@ const TelaConta = {
   login(modo = "entrar", erro = "") {
     const criar = modo === "criar";
     this.mostrar(`${this.logo()}
-      <p class="conta-sub">Aprenda Pawn, Python, HTML e CSS</p>
+      <p class="conta-sub">Aprenda Pawn, Python, HTML, CSS e JavaScript</p>
       <div class="abas">
         <button class="aba ${criar ? "" : "ativa"}" data-modo="entrar">Entrar</button>
         <button class="aba ${criar ? "ativa" : ""}" data-modo="criar">Criar conta</button>

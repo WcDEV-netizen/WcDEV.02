@@ -14,7 +14,7 @@ WCDEV.temas.push(
     titulo: "boas-vindas",
     chaves: [],
     resposta: `### Olá! Eu sou o WC DEV 👋
-Sou um assistente que te ensina a programar do zero, passo a passo, em **Python**, **HTML**, **CSS** e **Pawn** (servidores de GTA SA-MP).
+Sou um assistente que te ensina a programar do zero, passo a passo, em **Python**, **HTML**, **CSS**, **JavaScript** e **Pawn** (servidores de GTA SA-MP).
 O que eu sei fazer:
 - **Explicar**: pergunte do seu jeito, até com erro de digitação
 - **Gerar código**: "cria um comando /cura que dá 100 de vida"
@@ -33,7 +33,7 @@ Por onde você quer começar?`,
 Pergunte do seu jeito, por exemplo: **"como criar um comando no samp"**, **"como fazer um for em python"** ou **"como centralizar uma div"**.
 
 **Aprender**
-- {{/pawn}} {{/python}} {{/html}} {{/css}}: mostra a trilha de aulas
+- {{/pawn}} {{/python}} {{/html}} {{/css}} {{/javascript}}: mostra a trilha de aulas (cada aula termina com um desafio; a próxima só libera quando você passa)
 - {{/proximo}}: próxima aula da trilha
 - {{/indice pawn}}: tudo que eu sei de uma linguagem
 
@@ -44,7 +44,8 @@ Pergunte do seu jeito, por exemplo: **"como criar um comando no samp"**, **"como
 - {{/missao pawn}}: projeto maior com checklist
 - {{/dica}}, {{/resposta}}, {{/pular}}, {{/sair}}: dentro do treino
 - {{/boletim}}: seu progresso nas trilhas (os desafios ficam mais difíceis conforme você vence)
-- Cole qualquer código e eu **reviso**; depois **"agora corrige"** conserta sem mexer no resto e **"explica linha por linha"** explica
+- Cole qualquer código e eu **reviso** (em Pawn: sintaxe, lógica, segurança e XP/level, separado em *erro confirmado*, *problema provável*, *risco potencial* e *melhoria*); depois **"agora corrige"** conserta sem mexer no resto e mostra o antes/depois, e **"explica linha por linha"** explica
+- **"explica a linha 20"**, **"faz a mesma coisa em Python"**, **"o erro continua"**: eu uso o código da conversa
 - Cole a **mensagem de erro** do compilador ou do Python que eu explico a linha
 - **"quero fazer um servidor RPG"**: monto o roteiro de estudo do projeto
 
@@ -60,6 +61,13 @@ Pergunte do seu jeito, por exemplo: **"como criar um comando no samp"**, **"como
 **Me ensinar**
 - {{/ensinar pergunta = resposta}}: eu aprendo uma resposta nova
 - {{/aprendidos}} e {{/esquecer pergunta}}
+- {{/importar}}: colo um conhecimento novo (com versão e {{/desfazer importação}})
+- {{/regra}}: crio uma regra de revisão sua; {{/regras}} lista
+- 👍/👎 nas respostas e {{/feedback}}: vira sugestão de melhoria (eu não me treino sozinha, veja {{/aprendizado}})
+- {{/resumo}}: resumo da conversa
+
+**Modelo local (opcional)**
+- {{/modelo}}: liga um modelo rodando no seu PC (ex: Ollama); {{/ia sua pergunta}} pergunta pra ele. Nada vai pra internet.
 
 - {{/limpar}}: começa uma conversa nova`,
     sugestoes: ["/pawn", "/treinar", "/python"],
@@ -99,7 +107,7 @@ Pergunte do seu jeito, por exemplo: **"como criar um comando no samp"**, **"como
     titulo: "quem é você",
     chaves: ["quem e voce", "quem e vc", "seu nome", "qual seu nome", "o que voce e", "voce e uma ia", "quem te criou", "quem criou voce"],
     resposta: `Eu sou o **WC DEV**, um assistente feito pra ensinar programação 💙🖤
-Funciono direto no seu navegador, sem internet e sem API: tudo que eu sei está guardado nos meus arquivos de Python, HTML, CSS e Pawn. Eu também corrijo exercícios, reviso códigos e aprendo coisas novas que você me ensinar.
+Funciono direto no seu navegador, sem internet e sem API: tudo que eu sei está guardado nos meus arquivos de Python, HTML, CSS, JavaScript e Pawn. Eu também corrijo exercícios, reviso códigos e aprendo coisas novas que você me ensinar.
 Fui criado pela **WC DEV** pra ajudar quem está começando.`,
     sugestoes: ["o que você sabe fazer?", "por onde eu começo?"],
   },
@@ -267,7 +275,7 @@ O trio da web é:
 - **CSS** → visual
 - **JavaScript** → comportamento
 
-Eu ensino Python, HTML e CSS. Depois de dominar HTML e CSS, JavaScript é o próximo passo natural! Pra começar, você pode colocar no HTML:
+Eu ensino JavaScript também (toque em **/javascript**)! Depois de HTML e CSS, ele é o próximo passo natural. Pra começar, você pode colocar no HTML:
 ~~~html
 <button onclick="alert('Olá!')">Clique</button>
 ~~~`,
@@ -412,7 +420,7 @@ tema("frontend-backend", "front-end e back-end",
 - **Back-end**: o que roda **no servidor**: login, banco de dados, pagamentos (Python, Node, PHP...).
 - **Full stack**: quem faz os dois.
 
-Com o que eu ensino: HTML e CSS = front-end; Python ({{flask}}, {{django}}) = back-end.`,
+Com o que eu ensino: HTML, CSS e JavaScript = front-end; Python ({{flask}}, {{django}}) = back-end.`,
   ["flask", "/html"]);
 
 tema("hackear", "hacker",
@@ -429,7 +437,7 @@ tema("nome-wc", "o que significa WC DEV",
 
 tema("idade-ia", "quantos anos você tem",
   ["quantos anos voce tem", "sua idade", "quando voce nasceu"],
-  `Sou bem novinho! Nasci como um monte de arquivos .js 😄 Mas já sei centenas de coisas sobre Python, HTML e CSS.`,
+  `Sou bem novinho! Nasci como um monte de arquivos .js 😄 Mas já sei centenas de coisas sobre Pawn, Python, HTML, CSS e JavaScript.`,
   ["o que você sabe fazer?"]);
 
 tema("gosta", "você gosta de programar",
@@ -539,7 +547,7 @@ WCDEV.foraDoAssunto = {
     "include", "plugin", "dialog", "textdraw", "callback", "flexbox", "div", "print", "input", "json", "roblox", "lua",
   ],
   respostas: [
-    "Eu sou programado pra **ensinar programação**, não pra conversar sobre isso 😅\nMas se quiser, te ensino **Pawn**, **Python**, **HTML** ou **CSS**!",
+    "Eu sou programado pra **ensinar programação**, não pra conversar sobre isso 😅\nMas se quiser, te ensino **Pawn**, **Python**, **HTML**, **CSS** ou **JavaScript**!",
     "Esse assunto foge do que eu sei! 🤖 Eu fui feito pra **ensinar a programar**. Bora aprender algo novo?",
     "Opa, aí não é comigo 😄 Meu trabalho é **ensinar programação**. Que tal treinar um pouco? Digite {{/treinar}}.",
   ],
