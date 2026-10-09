@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WC DEV — Aprenda a Programar</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Barra lateral -->
+    <aside class="sidebar" id="sidebar">
+      <div class="logo">
+        <span class="logo-icone">&gt;_</span>
+        <span class="logo-texto">WC <b>DEV</b></span>
+      </div>
+
+      <button class="btn-novo" id="btnNovo">+ Nova conversa</button>
+
+      <div class="secao-titulo">Conversas</div>
+      <div class="lista-conversas" id="listaConversas"></div>
+
+      <div class="secao-titulo">Trilhas</div>
+      <button class="trilha" data-cmd="/pawn"><span class="dot pawn"></span>Pawn <small>SA-MP</small></button>
+      <button class="trilha" data-cmd="/python"><span class="dot py"></span>Python</button>
+      <button class="trilha" data-cmd="/html"><span class="dot html"></span>HTML</button>
+      <button class="trilha" data-cmd="/css"><span class="dot css"></span>CSS</button>
+
+      <div class="secao-titulo">Praticar</div>
+      <button class="trilha" data-cmd="/treinar"><span class="icone">🏋️</span>Treinar</button>
+      <button class="trilha" data-cmd="/editor"><span class="icone">✍️</span>Editor de código</button>
+      <button class="trilha" data-cmd="/aprendidos"><span class="icone">🧠</span>Me ensinar</button>
+
+      <div class="secao-titulo">Comandos</div>
+      <div class="comandos">
+        <code>/ajuda</code> todos os comandos<br>
+        <code>/indice pawn</code> tudo que sei<br>
+        <code>/proximo</code> próxima aula<br>
+        <code>/progresso</code> seu treino<br>
+        <code>/limpar</code> limpar chat
+      </div>
+
+      <div class="caixa-usuario" id="caixaUsuario"></div>
+      <div class="rodape">Funciona offline · sem API</div>
+    </aside>
+
+    <!-- Área do chat -->
+    <main class="chat">
+      <header class="topo">
+        <button class="menu" id="btnMenu" aria-label="Abrir menu">☰</button>
+        <div class="topo-titulo">
+          <span class="status"></span> WC DEV <small>assistente de programação</small>
+        </div>
+        <div class="topo-lang" id="langAtual">—</div>
+        <button class="btn-editor" id="btnEditor" title="Abrir o editor de código">&lt;/&gt; Editor</button>
+      </header>
+
+      <div class="mensagens" id="mensagens">
+        <!-- Some quando o app.js carrega. Se aparecer, faltam arquivos .js na pasta. -->
+        <div class="aviso-erro" id="avisoErro">
+          ⚠️ <b>Os arquivos do chat não carregaram.</b><br>
+          Deixe estes arquivos todos <b>na mesma pasta</b> que o index.html:<br>
+          <code>app.js · conversa.js · python.js · html.js · css.js · pawn.js · revisor.js · treino.js · conta.js · editor.js · style.css</code><br>
+          Se você abriu direto de dentro do .zip, extraia primeiro.
+        </div>
+      </div>
+
+      <form class="entrada" id="formulario" action="javascript:void(0)">
+        <span class="prompt">❯</span>
+        <textarea id="texto" rows="1" enterkeyhint="send" autocomplete="off" placeholder="Pergunte algo ou cole um código..."></textarea>
+        <button type="submit" id="btnEnviar" aria-label="Enviar">➤</button>
+      </form>
+    </main>
+
+    <!-- Editor de código (escrever, revisar e treinar) -->
+    <section class="editor" id="editor" aria-hidden="true">
+      <div class="editor-topo">
+        <span class="editor-titulo">&lt;/&gt; Editor</span>
+        <select id="editorLang" aria-label="Linguagem">
+          <option value="pawn">Pawn</option>
+          <option value="python">Python</option>
+          <option value="html">HTML</option>
+          <option value="css">CSS</option>
+        </select>
+        <button class="editor-fechar" id="editorFechar" aria-label="Fechar editor">✕</button>
+      </div>
+      <div class="editor-exercicio" id="editorExercicio" hidden></div>
+      <div class="editor-area">
+        <pre class="editor-linhas" id="editorLinhas" aria-hidden="true">1</pre>
+        <textarea id="editorCodigo" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off"></textarea>
+      </div>
+      <div class="editor-preview" id="editorPreview" hidden>
+        <div class="preview-topo">resultado</div>
+        <iframe sandbox="" title="Resultado"></iframe>
+      </div>
+      <div class="editor-botoes">
+        <button class="btn-primario" id="btnEnviarResposta" hidden>✔ Enviar resposta</button>
+        <button id="btnRevisar">🔎 Revisar</button>
+        <button id="btnVer">👁 Ver resultado</button>
+        <button id="btnCopiarCod">Copiar</button>
+        <button id="btnLimparCod">Limpar</button>
+      </div>
+      <div class="editor-dica">Tab = 4 espaços · Ctrl+Enter envia</div>
+    </section>
+  </div>
+
+  <!-- Login e planos (aparece por cima de tudo) -->
+  <div class="tela-conta" id="telaConta" hidden></div>
+
+  <!-- Base de conhecimento: cada linguagem em um arquivo -->
+  <script src="conversa.js"></script>
+  <script src="python.js"></script>
+  <script src="html.js"></script>
+  <script src="css.js"></script>
+  <script src="pawn.js"></script>
+  <!-- Ferramentas: revisor de código, treino e "ensinar" -->
+  <script src="revisor.js"></script>
+  <script src="treino.js"></script>
+  <!-- Conta, planos, conversas salvas e editor -->
+  <script src="conta.js"></script>
+  <script src="editor.js"></script>
+  <!-- Motor do chat -->
+  <script src="app.js"></script>
+</body>
+</html>
