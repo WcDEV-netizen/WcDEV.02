@@ -224,7 +224,7 @@ function enviar(texto) {
   if (!texto) return;
   adicionarMensagem("user", escapar(texto).replace(/\n/g, "<br>"));
   elTexto.value = "";
-  elTexto.style.height = "auto";
+  ajustarAltura();
   elSidebar.classList.remove("aberta");
   const resposta = pensar(texto);
   if (resposta) responder(resposta);
@@ -238,21 +238,54 @@ function limparChat() {
 }
 
 function boasVindas() {
-  responder(usarTema(WCDEV.temas.find(x => x.id === "boas-vindas")));
+  const tema = WCDEV.temas.find(x => x.id === "boas-vindas");
+  if (!tema) {
+    adicionarMensagem("bot", "<p>⚠️ Faltam arquivos de conteúdo (conversa.js, python.js, html.js, css.js) na mesma pasta do index.html.</p>");
+    return;
+  }
+  responder(usarTema(tema));
 }
 
 /* ---------- Eventos ---------- */
 
 elForm.addEventListener("submit", e => { e.preventDefault(); enviar(elTexto.value); });
 
+// Enter envia (Shift+Enter pula linha)
+let shiftApertado = false;
 elTexto.addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(elTexto.value); }
+  shiftApertado = e.shiftKey;
+  if ((e.key === "Enter" || e.keyCode === 13) && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    enviar(elTexto.value);
+  }
+});
+elTexto.addEventListener("keyup", e => { shiftApertado = e.shiftKey; });
+
+// Alguns teclados de celular não avisam o "keydown" do Enter: pega a quebra de linha aqui
+elTexto.addEventListener("beforeinput", e => {
+  if (shiftApertado) return;
+  if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+    e.preventDefault();
+    enviar(elTexto.value);
+  }
 });
 
-elTexto.addEventListener("input", () => {
+// A caixa cresce conforme você escreve mais linhas
+function ajustarAltura() {
   elTexto.style.height = "auto";
-  elTexto.style.height = elTexto.scrollHeight + "px";
+  elTexto.style.height = Math.min(elTexto.scrollHeight, 160) + "px";
+  elTexto.style.overflowY = elTexto.scrollHeight > 160 ? "auto" : "hidden";
+}
+elTexto.addEventListener("input", ajustarAltura);
+
+// No celular, quando o teclado abre, rola até a última mensagem
+elTexto.addEventListener("focus", () => {
+  setTimeout(() => (elMensagens.scrollTop = elMensagens.scrollHeight), 300);
 });
+
+// Tudo carregou: esconde o aviso de erro
+const aviso = document.getElementById("avisoErro");
+if (aviso) aviso.remove();
 
 document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = () => enviar(b.dataset.cmd));
 document.getElementById("btnNovo").onclick = limparChat;

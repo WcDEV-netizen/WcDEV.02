@@ -20,10 +20,11 @@ body {
   color: var(--texto);
   font-family: system-ui, "Segoe UI", Roboto, sans-serif;
   height: 100vh;
+  height: 100dvh;   /* altura real no celular (sem esconder atrás da barra do navegador) */
   overflow: hidden;
 }
 
-.app { display: flex; height: 100vh; }
+.app { display: flex; height: 100vh; height: 100dvh; }
 
 /* ----- Barra lateral ----- */
 .sidebar {
@@ -250,9 +251,11 @@ body {
   resize: none;
   color: var(--texto);
   font-family: var(--mono);
-  font-size: 14.5px;
+  font-size: 16px;   /* 16px evita o zoom automático no iPhone */
+  line-height: 1.5;
   max-height: 160px;
-  padding: 4px 0;
+  overflow-y: hidden;
+  padding: 6px 0;
 }
 .entrada textarea::placeholder { color: var(--texto-fraco); }
 #btnEnviar {
@@ -267,12 +270,28 @@ body {
 }
 #btnEnviar:hover { background: var(--azul-claro); }
 
+/* Aviso se os arquivos .js não carregarem */
+.aviso-erro {
+  max-width: 820px;
+  margin: 40px auto;
+  padding: 18px;
+  border: 1px solid #ff5c5c;
+  border-radius: 12px;
+  background: #1a0b0f;
+  line-height: 1.8;
+}
+.aviso-erro code { color: var(--azul-claro); font-family: var(--mono); font-size: 13px; }
+
+.entrada { flex-shrink: 0; }
+#btnEnviar { flex-shrink: 0; }
+
 /* ----- Celular ----- */
 @media (max-width: 760px) {
   .sidebar {
     position: fixed;
     z-index: 10;
     height: 100vh;
+    height: 100dvh;
     transform: translateX(-100%);
   }
   .sidebar.aberta { transform: translateX(0); }
