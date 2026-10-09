@@ -102,6 +102,12 @@ function desenharAnalise(json) {
       (cp.resolvidos.length ? `<ul class="an-res">${cp.resolvidos.slice(0, 5).map(t => `<li>✅ ${escapar(t)}</li>`).join("")}</ul>` : "") + (cp.novos.length ? `<ul class="an-res">${cp.novos.slice(0, 5).map(t => `<li>🆕 ${escapar(t)}</li>`).join("")}</ul>` : "") + `</div>`;
   }
   if (d.cortado || d.puladas) h += `<div class="an-nota">⚠️ ${d.cortado ? "O código era muito grande: analisei só a primeira parte. " : ""}${d.puladas ? `${d.puladas} regra(s) não rodaram pra não travar.` : ""}</div>`;
+  if (d.preproc && (d.preproc.inativas.length || d.preproc.incertas.length)) {
+    const pp = d.preproc, faixa = b => b.ini === b.fim ? `linha ${b.ini}` : `linhas ${b.ini}–${b.fim}`;
+    h += `<div class="an-nota">🧩 <b>Compilação condicional:</b> ` +
+      (pp.inativas.length ? `${pp.inativas.map(b => `${faixa(b)} (${escapar(b.motivo)})`).slice(0, 4).join("; ")} <b>não são compiladas</b> nesta configuração, então não analisei como código ativo (em outra configuração elas podem valer). ` : "") +
+      (pp.incertas.length ? `${pp.incertas.map(b => `${faixa(b)} (<code class="inline">#if ${escapar(b.cond)}</code>)`).slice(0, 4).join("; ")} dependem de algo que eu não vejo: analisei esse ramo, mas nada ali é dado como certo.` : "") + `</div>`;
+  }
   if (d.trecho) h += `<div class="an-nota">📎 Você mandou um <b>trecho</b> (sem o arquivo inteiro): o que está declarado em outro lugar vira <b>risco potencial</b>, nunca "erro confirmado". Pra uma análise completa, mande o arquivo inteiro ou o projeto (<b>/projeto</b>).</div>`;
   if (d.faltando && d.faltando.length) h += `<div class="an-nota">📎 Faltaram arquivos: ${d.faltando.map(f => `<code class="inline">${escapar(f)}</code>`).join(", ")}. O que estiver neles eu não vejo, então nada que dependa deles é dado como certo.</div>`;
   if (d.projeto) {
@@ -752,6 +758,28 @@ function corrigirPawn(original, r) {
   return { texto, sugestoes: ["colocar no editor", "explica linha por linha"] };
 }
 
+/* ---------- Suporte pelo WhatsApp (o único canal de contato) ----------
+   Só manda o que a pessoa escreveu: código, conversas e análises NÃO vão junto.
+   O app só abre a conversa com a mensagem pronta; o envio é a pessoa que faz no WhatsApp. */
+function suporteWhatsApp(texto) {
+  if (typeof WhatsApp === "undefined" || !WhatsApp.valido()) return { texto: "O contato pelo WhatsApp não está configurado neste app." };
+  const msg = adicionarMensagem("bot", `<div class="zap-box"><b>💬 Falar com o suporte no WhatsApp</b>
+    <span class="zap-st">Escreva a mensagem. Só vai o que você escrever aqui (nenhum código ou conversa vai junto). O WhatsApp abre com o texto pronto e <b>você</b> envia.</span>
+    <textarea maxlength="1000" aria-label="Mensagem pro suporte">${escapar(texto || "")}</textarea>
+    <button class="btn-primario btn-zap" type="button">Abrir o WhatsApp</button><span class="zap-st zap-res" role="status"></span></div>`);
+  const ta = msg.querySelector("textarea"), res = msg.querySelector(".zap-res");
+  msg.querySelector(".btn-zap").onclick = () => {
+    const t = ta.value.trim();
+    if (!t) { res.textContent = "Escreva a mensagem primeiro."; return; }
+    const ref = "suporte:" + t.slice(0, 60);
+    if (WhatsApp.repetido(ref)) { res.textContent = "Você abriu essa mesma mensagem agora há pouco. Se não enviou, confira a aba do WhatsApp."; return; }
+    const r = WhatsApp.abrir(`[WC DEV - suporte] ${Conta.atual ? Conta.atual.nome + ": " : ""}${t}`, ref, "suporte");
+    res.innerHTML = !r.ok ? "❌ " + escapar(r.erro) : r.bloqueado ? `O navegador bloqueou a aba. <a href="${WhatsApp.link(t)}" target="_blank" rel="noopener">Abrir o WhatsApp</a> (ainda <b>não foi enviada</b>).` : "WhatsApp aberto com a mensagem. Ela só é enviada quando você tocar em enviar lá.";
+  };
+  ta.focus();
+  return null;
+}
+
 /* ---------- Projeto com vários arquivos ---------- */
 // texto colado com "// arquivo: nome.inc" separando os arquivos -> { nome: código }
 function Projeto_doTexto(t) { return WCDEV.projeto && typeof t === "string" ? WCDEV.projeto.separarColado(t) : null; }
@@ -1005,6 +1033,7 @@ function pensarInterno(entrada) {
     if (cmd === "/zerar") return Treino.zerar(langArg);
     if (cmd === "/porque" || cmd === "/pensamento") return M ? M.explicarRastro() : null;
     if (cmd === "/resumo") return M ? M.resumo() : null;
+    if (cmd === "/suporte" || cmd === "/whatsapp" || cmd === "/zap") return suporteWhatsApp(resto);
     if (cmd === "/modelo") return WCDEV.modeloLocal ? WCDEV.modeloLocal.painel() : null;
     if (cmd === "/reanalisar") { const c = codigoAtual(); if (!c) return { texto: "Não tenho código pra analisar de novo. Cole aqui ou abra no editor." }; return Projeto_doTexto(c.codigo) ? analisarProjetoChat(Projeto_doTexto(c.codigo)) : analisarPawn(c.codigo); }
     if (cmd === "/analises" || cmd === "/análises") return listarAnalises(resto);

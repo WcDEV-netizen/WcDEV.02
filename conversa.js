@@ -71,6 +71,7 @@ Pergunte do seu jeito, por exemplo: **"como criar um comando no samp"**, **"como
 - {{/regra}}: crio uma regra de revisão sua; {{/regras}} lista
 - 👍/👎 nas respostas e {{/feedback}}: vira sugestão de melhoria (eu não me treino sozinha, veja {{/aprendizado}})
 - {{/resumo}}: resumo da conversa
+- {{/suporte}}: fala com o suporte pelo **WhatsApp** (só vai o que você escrever; você mesmo envia lá)
 - {{/base verificar}}: confiro todos os exemplos da base · {{/obsoleto ID}} e {{/verificar importado ID}}: organizam o que você importou
 
 **Modelo local (opcional)**

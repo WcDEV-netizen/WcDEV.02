@@ -640,7 +640,160 @@ const PawnAST = (() => {
     return f;
   }
 
-  return { tokenizar, analisarSintaxe, percorrer, nu, baseDe, variaveisLidas, texto, sempreRetorna, terminaFluxo, temBreak, constante, chamadas, fatosDaCondicao, loopInfinito };
+  /* ================= PRÉ-PROCESSADOR (#if / #else / #endif) =================
+     Decide quais linhas o compilador REALMENTE compila na configuração vista:
+       #if 0 / #if 1, #if defined X / #if !defined X, #if X == 2, &&, ||, !,
+       #elseif / #else / #endif aninhados, #define / #undef na ordem.
+     Saída:
+       codigo   o mesmo texto com as linhas INATIVAS em branco (os números de linha não mudam)
+       inativas [{ ini, fim, motivo }]   blocos que não são compilados nesta configuração
+       incertas [{ ini, fim, cond }]     blocos que dependem de algo que eu não vejo
+                                         (include que não recebi, opção -D do compilador...)
+     Regras:
+       - símbolo definido antes no código (ou nos arquivos do projeto) = definido;
+       - include padrão (a_samp, open.mp...) = uso os símbolos que o include oficial define;
+       - símbolo que poderia vir de algo que eu NÃO vejo = INCERTO: analiso o primeiro ramo
+         e aviso que depende da configuração (nada ali vira "erro confirmado").  */
+  function preprocessar(codigo, opcoes = {}) {
+    const linhas = codigo.split("\n");
+    const def = new Map(Object.entries(opcoes.definidos || {}));   // nome -> valor (texto)
+    const cat = (window.WCDEV && WCDEV.catalogo && WCDEV.catalogo.guardas) || {};
+    const incluiu = new Set(), desconhecidos = [];
+    const pilha = [];   // { pai, tomado, estado: true|false|null, ini, motivo, cond }
+    const inativas = [], incertas = [];
+    let mudou = false;
+    const ativoAgora = () => pilha.every(f => f.estado !== false);
+    // avaliador de expressão do #if: devolve número, ou null se não dá pra saber
+    function avaliar(txt) {
+      const toks = txt.replace(/\/\/.*$|\/\*.*?\*\//g, "").match(/defined\s*\(\s*\w+\s*\)|defined\s+\w+|\d+|0x[0-9a-f]+|&&|\|\||==|!=|<=|>=|[<>!()+\-*]|\w+/gi) || [];
+      let i = 0;
+      const prox = () => toks[i], come = () => toks[i++];
+      function prim() {
+        const t = come();
+        if (t === undefined) return null;
+        if (t === "(") { const v = ou(); if (prox() === ")") come(); return v; }
+        if (t === "!") { const v = prim(); return v === null ? null : +!v; }
+        if (t === "-") { const v = prim(); return v === null ? null : -v; }
+        let m;
+        if ((m = t.match(/^defined\s*\(?\s*(\w+)/))) return simbolo(m[1]);
+        if (/^0x/i.test(t)) return parseInt(t, 16);
+        if (/^\d+$/.test(t)) return +t;
+        if (/^(true)$/.test(t)) return 1;
+        if (/^(false)$/.test(t)) return 0;
+        if (def.has(t)) { const v = String(def.get(t)).trim(); if (/^-?\d+$/.test(v)) return +v; if (v === "") return 0; return avaliarSub(v); }
+        return simbolo(t) === 0 ? 0 : null;   // nome sem valor numérico: 0 se não existe; senão não sei
+      }
+      function cmp() {
+        let a = prim();
+        while (["==", "!=", "<", ">", "<=", ">=", "+", "*"].includes(prox())) {
+          const op = come(), b = prim();
+          if (a === null || b === null) { a = null; continue; }
+          a = { "==": +(a === b), "!=": +(a !== b), "<": +(a < b), ">": +(a > b), "<=": +(a <= b), ">=": +(a >= b), "+": a + b, "*": a * b }[op];
+        }
+        return a;
+      }
+      function e() { let a = cmp(); while (prox() === "&&") { come(); const b = cmp(); a = a === 0 || b === 0 ? 0 : a === null || b === null ? null : 1; } return a; }
+      function ou() { let a = e(); while (prox() === "||") { come(); const b = e(); a = (a !== null && a !== 0) || (b !== null && b !== 0) ? 1 : a === null || b === null ? null : 0; } return a; }
+      return ou();
+    }
+    function avaliarSub(v) { const prof = (avaliarSub.p = (avaliarSub.p || 0) + 1); try { return prof > 8 ? null : avaliar(v); } finally { avaliarSub.p--; } }
+    // 1 = definido, 0 = não definido, null = não sei
+    // o pawncc lê o arquivo várias vezes: "#if defined Funcao" vale mesmo se a função vem DEPOIS.
+    // Também conta o nome novo de um hook ALS: "#define OnPlayerConnect XP_OnPlayerConnect" + um "public OnPlayerConnect" depois dele
+    const declarados = new Set();
+    {
+      const semDir = codigo.replace(/^\s*#.*$/gm, "");
+      for (const m of semDir.matchAll(/\b(?:public|stock|native|static)\s+(?:\w+:)?([A-Za-z_@][\w@]*)\s*\(|^\s*new\s+(?:\w+:)?([A-Za-z_@][\w@]*)/gm)) declarados.add(m[1] || m[2]);
+      const ls = codigo.split("\n");
+      ls.forEach((l, k) => {
+        const m = l.match(/^\s*#\s*define\s+([A-Za-z_@][\w@]*)\s+([A-Za-z_@][\w@]*)\s*$/);
+        if (!m) return;
+        const depois = ls.slice(k + 1).join("\n").replace(/^\s*#.*$/gm, "");
+        if (new RegExp("\\b(?:public|stock)\\s+(?:\\w+:)?" + m[1] + "\\s*\\(").test(depois)) declarados.add(m[2]);
+      });
+    }
+    function simbolo(nome) {
+      if (def.has(nome) || declarados.has(nome)) return 1;
+      // include padrão: o a_samp do SA-MP e o a_samp do open.mp (que puxa o open.mp inteiro) definem coisas diferentes
+      const ompTudo = [].concat(...Object.keys(cat).filter(k => /^omp:/.test(k)).map(k => cat[k]));
+      for (const inc of incluiu) {
+        const doSamp = inc !== "open.mp" && !!(cat[inc] || []).includes(nome);
+        // o open.mp também tem a_samp.inc, a_players.inc... (que puxam o open.mp inteiro)
+        const temOmp = inc === "open.mp" || !!cat["omp:" + inc] || /^(a_samp|a_players|a_vehicles|a_objects|a_actor|a_http|a_npc|a_sampdb)$/.test(inc);
+        const doOmp = temOmp && (inc === "open.mp" || /^a_samp$/.test(inc) ? ompTudo.includes(nome) : (cat["omp:" + inc] || []).includes(nome));
+        if (inc === "open.mp") { if (doOmp) return 1; continue; }
+        if (doSamp && (doOmp || !temOmp)) return 1;
+        if (doSamp !== doOmp && temOmp) return null;   // depende de qual pasta de includes você usa (SA-MP ou open.mp)
+      }
+      // nome com cara de guarda de include (_algo_included) pode vir de um include que eu não vejo
+      if (/^_/.test(nome) && desconhecidos.length) return null;
+      // código completo: o compilador não define nada sozinho (só com a opção -D, que eu aviso no relatório)
+      return opcoes.completo ? 0 : null;
+    }
+    for (let i = 0; i < linhas.length; i++) {
+      const L = linhas[i];
+      const m = L.match(/^\s*#\s*(if|elseif|elif|else|endif|define|undef|include|tryinclude)\b(.*)$/);
+      const ativa = ativoAgora();
+      if (m) {
+        const d = m[1], resto = m[2];
+        if (d === "if") {
+          const v = ativa ? avaliar(resto) : 0;
+          const estado = !ativa ? false : v === null ? null : !!v;
+          pilha.push({ tomado: estado === true, estado, ini: i + 2, cond: resto.trim(), motivo: `#if ${resto.trim()}`, viuIncerto: estado === null, diretivas: [i] });
+          continue;
+        }
+        if ((d === "elseif" || d === "elif" || d === "else") && pilha.length) {
+          const f = pilha[pilha.length - 1];
+          fechar(f, i);
+          f.diretivas.push(i);
+          const paiAtivo = pilha.slice(0, -1).every(x => x.estado !== false);
+          if (!paiAtivo || f.tomado) f.estado = false;
+          else if (d === "else") f.estado = f.viuIncerto ? false : true;   // ramo incerto antes: analiso só o primeiro, o #else fica de fora (avisado)
+          else { const v = avaliar(resto); f.estado = f.viuIncerto ? false : v === null ? null : !!v; if (v === null) f.viuIncerto = true; }
+          if (f.estado === true) f.tomado = true;
+          if (f.viuIncerto && f.estado === false) f.alternativaIncerta = true;
+          f.ini = i + 2; f.motivo = `#${d}${resto.trim() ? " " + resto.trim() : ""} (de ${f.cond ? "#if " + f.cond : "#if"})`;
+          continue;
+        }
+        if (d === "endif" && pilha.length) {
+          const f = pilha.pop();
+          fechar(f, i);
+          // grupo todo decidido: tira também as linhas #if/#else/#endif (sobra só o código que vale, como o compilador vê)
+          if (!f.viuIncerto) { f.diretivas.concat(i).forEach(k => { linhas[k] = ""; }); mudou = true; }
+          continue;
+        }
+        if (!ativa) { linhas[i] = ""; mudou = true; continue; }   // #define/#include num ramo que não vale: também não vale
+        if (ativa) {
+          if (d === "define") { const dm = resto.match(/^\s+([A-Za-z_@][\w@]*)(\([^)]*\))?\s*(.*)$/); if (dm && !dm[2]) def.set(dm[1], dm[3].replace(/\/\/.*$/, "").trim()); else if (dm) def.set(dm[1], ""); }
+          if (d === "undef") { const um = resto.match(/^\s+(\w+)/); if (um) def.delete(um[1]); }
+          if (d === "include" || d === "tryinclude") {
+            const im = resto.match(/^\s*[<"]([^>"]+)[>"]/);
+            if (im) {
+              const nome = im[1].replace(/\\/g, "/").split("/").pop().replace(/\.(inc|pwn)$/i, "");
+              if (cat[nome] || cat["omp:" + nome] || /^open\.mp$/i.test(nome)) incluiu.add(/^open\.mp$/i.test(nome) ? "open.mp" : nome);
+              else if (!(opcoes.fornecidos || []).some(f => f.replace(/\.(inc|pwn)$/i, "").split("/").pop() === nome)) desconhecidos.push(nome);
+            }
+          }
+        }
+        continue;
+      }
+      if (/\/\/ \[wcdev\] incluído:/.test(L)) continue;
+      if (!ativa && L.trim()) { linhas[i] = ""; mudou = true; }
+    }
+    while (pilha.length) fechar(pilha.pop(), linhas.length);
+    function fechar(f, ateIdx) {
+      if (ateIdx + 1 < f.ini) return;
+      const bloco = { ini: f.ini, fim: ateIdx, motivo: f.motivo, cond: f.cond };
+      if (f.estado === false && bloco.fim >= bloco.ini) inativas.push({ ...bloco, alternativaIncerta: !!f.alternativaIncerta });
+      if (f.estado === null && bloco.fim >= bloco.ini) incertas.push(bloco);
+    }
+    // texto ORIGINAL das linhas que ficaram de fora (pra explicar "essa função só existe dentro de um #if que não vale")
+    const original = codigo.split("\n");
+    const textoInativo = inativas.map(b => ({ ...b, texto: original.slice(b.ini - 1, b.fim).join("\n") }));
+    return { codigo: mudou ? linhas.join("\n") : codigo, inativas, incertas, definidos: def, desconhecidos, incluiu: [...incluiu], textoInativo };
+  }
+
+  return { preprocessar, tokenizar, analisarSintaxe, percorrer, nu, baseDe, variaveisLidas, texto, sempreRetorna, terminaFluxo, temBreak, constante, chamadas, fatosDaCondicao, loopInfinito };
 })();
 
 WCDEV.pawnAst = PawnAST;

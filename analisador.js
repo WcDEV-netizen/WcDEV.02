@@ -561,6 +561,8 @@ const Analisador = (() => {
     const PERIGO = /\b(Kick|Ban|BanEx|SendRconCommand|SetPlayerHealth|SetPlayerArmour|GivePlayerWeapon|ResetPlayerWeapons|SetPlayerScore|SetPlayerPos|SetPlayerSkin|SetPlayerInterior|SetPlayerVirtualWorld|TogglePlayerControllable|SetPlayerWantedLevel|GivePlayerMoney|ResetPlayerMoney|SetPlayerName|GameModeExit)\s*\(\s*([A-Za-z_]\w*)/g;
     const PERMISSAO = /IsPlayerAdmin|admin|Admin|ADMIN|adm\b|Adm|nivelAdm|Staff|staff|Mod\b|moderador|Moderador|VIP|vip|Vip|Lider|lider|Cargo|cargo|Permiss|permiss/;
     for (const f of ctx.funcoes.filter(f => f.tipo === "comando")) {
+      // com a árvore sintática, quem decide é a regra estrutural (analisador-intencao.js): esta (por palavra) só vale sem árvore
+      if (ctx.ast && WCDEV.analiseIntencao && ctx.ast.funcoes.some(g => g.nome === f.nome && g.tipo === "comando" && !g.parcial)) continue;
       // permissão de verdade = a palavra aparece numa CONDIÇÃO que barra (if ... return), e não em qualquer lugar (ex: Admin[alvo] = nivel)
       const condicoes = [...f.corpo.matchAll(/\bif\s*\(/g)].map(m => { const ini = m.index + m[0].length - 1, fim = fechaParen(f.corpo, ini); return fim > 0 ? f.corpo.slice(ini, fim + 1) + f.corpo.slice(fim + 1, fim + 60) : ""; });
       if (condicoes.some(c => PERMISSAO.test(c.split(")")[0] + ")") && /playerid/.test(c) && /\breturn\b/.test(c))) continue;
@@ -644,6 +646,14 @@ const Analisador = (() => {
       for (const d of ctx.fora.matchAll(/\b(?:new|static)\s+([^;]+);/g)) declaracoes(d[1]).forEach(([n]) => locaisSoltos.add(n));
       for (const d of ctx.fora.matchAll(/\bfor\s*\(\s*new\s+(?:\w+:)?([A-Za-z_]\w*)/g)) locaisSoltos.add(d[1]);
       olhar(ctx.fora, 0, locaisSoltos);
+    }
+    // a árvore sintática enxerga o que o leitor por texto perde (função de uma linha só, parâmetros, locais)
+    if (faltam.size && ctx.ast) {
+      const P = WCDEV.pawnAst, vistos = new Set();
+      for (const f of ctx.ast.funcoes) { vistos.add(f.nome); f.params.forEach(p => vistos.add(p.nome)); P.percorrer(f.corpo, n => { if (n.k === "decl") n.vars.forEach(v => vistos.add(v.nome)); if (n.k === "foreach") vistos.add(n.var); }); }
+      ctx.ast.globais.forEach(g => vistos.add(g.nome)); ctx.ast.enums.forEach(e => { if (e.nome) vistos.add(e.nome); e.membros.forEach(m => vistos.add(m.nome)); });
+      ctx.ast.defines.forEach(d => vistos.add(d.nome)); ctx.ast.prototipos.forEach(p => vistos.add(p.nome));
+      for (const n of [...faltam.keys()]) if (vistos.has(n)) faltam.delete(n);
     }
     if (!faltam.size) return [];
     const nomes = [...faltam.keys()];
@@ -941,14 +951,27 @@ const Analisador = (() => {
     const chaveCache = !opcoes.arquivoDe && !opcoes.semCache ? lang + ":" + hash(codigo) : null;
     if (chaveCache && cache.has(chaveCache)) { const r = cache.get(chaveCache); cache.delete(chaveCache); cache.set(chaveCache, r); return r; }
     const rev = WCDEV.revisor ? WCDEV.revisor.analisar(codigo, lang) : null;
-    const sintaxe = rev ? rev.problemas : [];
+    const sintaxe = rev ? rev.problemas.slice() : [];
     if (!regras[lang]) return { lang, sintaxe, achados: [], ctx: null, suportado: false };
     const inicio = Date.now();
     const LIMITE_TEXTO = opcoes.limiteTexto || 120000, LIMITE_TEMPO = opcoes.limiteTempo || 1500;   // código gigante ou análise lenta: para e avisa
     const cortado = codigo.length > LIMITE_TEXTO;
     if (cortado) codigo = codigo.slice(0, codigo.lastIndexOf("\n", LIMITE_TEXTO));
+    // pré-processador: o que está em #if 0 (ou num ramo que não vale) não é compilado → não é analisado
+    let pre = null;
+    if (lang === "pawn" && WCDEV.pawnAst && /^\s*#\s*(if|elseif|else|endif)\b/m.test(codigo)) {
+      try {
+        pre = WCDEV.pawnAst.preprocessar(codigo, { completo: (!!opcoes.arquivoDe && !(opcoes.faltando || []).length) || (/^\s*#\s*include/m.test(codigo) && /\bmain\s*\(/.test(codigo)) });
+        if (pre.codigo !== codigo) {
+          codigo = pre.codigo;
+          const ativos = WCDEV.revisor.analisar(codigo, lang);
+          sintaxe.length = 0; sintaxe.push(...(ativos ? ativos.problemas : []));
+        }
+      } catch (e) { pre = null; }
+    }
     let ctx;
     try { ctx = estrutura(codigo); } catch (e) { return { lang, sintaxe, achados: [], ctx: null, suportado: true, falhou: true }; }
+    ctx.pre = pre;
     ctx.arquivoDe = opcoes.arquivoDe || null;
     ctx.faltando = opcoes.faltando || [];
     if (ctx.faltando.length) ctx.includesProprios.push(...ctx.faltando);
@@ -961,12 +984,20 @@ const Analisador = (() => {
       tempos[regra.id] = Date.now() - t0;
     }
     const achados = validar(brutos, ctx, sintaxe);
+    // dentro de um #if que eu não sei se vale: nada é "certo" (depende da configuração)
+    if (pre && pre.incertas.length) for (const a of achados) {
+      const b = pre.incertas.find(x => a.linha >= x.ini && a.linha <= x.fim);
+      if (!b) continue;
+      if (a.nivel === "erro" || a.nivel === "provavel") a.nivel = "verificar";
+      a.limites = `Depende da configuração: este trecho só é compilado se {{#if ${b.cond}}} for verdadeiro, e eu não consigo ver se é (o símbolo pode vir de um include que eu não recebi ou de uma opção -D do compilador).`;
+    }
     let investigacoes = [];
     try { investigacoes = investigarXP(ctx); } catch (e) { investigacoes = []; }
     try { const est = WCDEV.analiseFluxo && WCDEV.analiseFluxo.investigarEstado(ctx); if (est) investigacoes.push(est); } catch (e) { /* sem checklist */ }
     let compilacao = null;
     if (Analisador.compilador) { try { compilacao = Analisador.compilador(codigo); } catch (e) { compilacao = null; } }
-    const r = { lang, sintaxe, achados, ctx, suportado: true, compilacao, investigacoes, cortado, puladas, tempo: Date.now() - inicio, tempos, nRegras: regras[lang].length, arvore: !!(ctx.ast && !ctx.ast.erros.length) };
+    const preproc = pre ? { inativas: pre.inativas.map(b => ({ ini: b.ini, fim: b.fim, motivo: b.motivo, alternativaIncerta: b.alternativaIncerta })), incertas: pre.incertas.map(b => ({ ini: b.ini, fim: b.fim, cond: b.cond })) } : null;
+    const r = { lang, sintaxe, achados, ctx, suportado: true, compilacao, investigacoes, cortado, puladas, preproc, tempo: Date.now() - inicio, tempos, nRegras: regras[lang].length, arvore: !!(ctx.ast && !ctx.ast.erros.length) };
     if (chaveCache) { cache.set(chaveCache, r); if (cache.size > 20) cache.delete(cache.keys().next().value); }
     return r;
   }
@@ -1063,6 +1094,7 @@ const Analisador = (() => {
       avisos: sintaxe.filter(x => x.tipo !== "erro" && !/main\(\)/.test(x.msg) && !achados.some(a => a.linha === x.linha && a.regra === "strcmp-invertido" && /strcmp/.test(x.msg))).slice(0, 6).map(x => ({ linha: x.linha, msg: x.msg })),
       achados: achados.slice(0, opcoes.max || 14).map(a => paraPainel(a, l => ctx && ctx.linhas[l - 1])),
       categorias: Object.fromEntries(Object.keys(CATEGORIAS).map(k => [k, achados.filter(a => a.categoria === k).length + (k === "compilacao" ? sintaxe.filter(x => x.tipo === "erro").length : 0)])),
+      preproc: r.preproc || null,
       faltando: ctx && ctx.faltando ? ctx.faltando : [], projeto: opcoes.projeto || null, arvore: !!r.arvore, id: opcoes.id || "", comparacao: opcoes.comparacao || null, total: achados.length,
       investigacoes: opcoes.curto ? [] : (r.investigacoes || []),
       compilou: r.compilacao ? r.compilacao.resumo : null,

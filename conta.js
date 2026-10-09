@@ -1,7 +1,8 @@
 /* =========================================================
    WC DEV — CONTA, PLANOS E CONVERSAS SALVAS
    - Login com nome e senha (salvo neste aparelho)
-   - Planos: o cliente gera um pedido, paga o PIX e manda o comprovante
+   - Planos: o cliente gera um pedido, paga o PIX e manda o comprovante PELO WHATSAPP
+     (não existe envio por e-mail/Gmail no app)
    - O dono confere no PAINEL DE ADMIN e envia um código de ativação
    - O código é assinado: só o painel do dono consegue criar um válido
    ========================================================= */
@@ -11,8 +12,8 @@ window.WCDEV = window.WCDEV || { temas: [] };
 const CONFIG = {
   pix: "wadellencesar4@gmail.com",               // chave PIX
   recebedor: "Wadillen Cesar da Silva",          // nome que aparece no comprovante
-  contato: "wadellencesar2@gmail.com",           // pra onde o cliente manda o comprovante
-  whatsapp: "",                                  // opcional: seu WhatsApp com DDI+DDD, só números (ex: "5511987654321")
+  // comprovantes e informações vão SÓ pelo WhatsApp deste número (não existe envio por e-mail no app)
+  whatsapp: "5581999766437",                     // DDI 55 + DDD 81 + número, só dígitos
   planos: [
     { id: "p10", nome: "10 dias", dias: 10, valor: 30 },
     { id: "p20", nome: "20 dias", dias: 20, valor: 60 },
@@ -20,6 +21,32 @@ const CONFIG = {
   ],
   // chave PÚBLICA: só confere códigos. A privada fica no painel de admin.
   chavePublica: { kty: "EC", crv: "P-256", x: "hqVjTJTmZ0BcxQpDLK20GwAAsZxO0AuqFF_8ugeu_oc", y: "mt2DQCcF7hL_dLJcv4914v0P3smJnBAtzJG4jX0g5E0" },
+};
+
+/* ---------- WhatsApp (único canal de envio) ----------
+   Não tem API de envio aqui (nem token, nem senha): o app ABRE a conversa com o
+   número autorizado e deixa a mensagem pronta. Quem aperta "enviar" é a pessoa,
+   dentro do WhatsApp. Por isso o registro diferencia:
+     "conversa-aberta"        o WhatsApp foi aberto com a mensagem (NÃO quer dizer enviada)
+     "confirmado-pela-pessoa" a pessoa tocou em "Já mandei" depois
+   O registro fica só neste aparelho. */
+const WhatsApp = {
+  numero() { return String(CONFIG.whatsapp || "").replace(/\D/g, ""); },
+  valido() { return /^55\d{10,11}$/.test(this.numero()); },
+  link(texto) { return `https://wa.me/${this.numero()}?text=${encodeURIComponent(texto)}`; },
+  registros() { try { return JSON.parse(localStorage.getItem("wcdev_envios_whatsapp") || "[]"); } catch (e) { return []; } },
+  registrar(item) {
+    const l = this.registros().concat({ quando: Date.now(), ...item }).slice(-50);
+    try { localStorage.setItem("wcdev_envios_whatsapp", JSON.stringify(l)); return true; } catch (e) { return false; }
+  },
+  // abriu a mesma mensagem há menos de 2 min? (evita mandar repetido sem querer)
+  repetido(ref) { return this.registros().some(r => r.ref === ref && r.status === "conversa-aberta" && Date.now() - r.quando < 120000); },
+  abrir(texto, ref, tipo) {
+    if (!this.valido()) return { ok: false, erro: "O número de WhatsApp do app está inválido. Nada foi enviado." };
+    const janela = window.open(this.link(texto), "_blank", "noopener");
+    this.registrar({ ref, tipo, status: "conversa-aberta", bloqueado: !janela });
+    return { ok: true, bloqueado: !janela };
+  },
 };
 
 /* ---------- utilidades ---------- */
@@ -251,9 +278,7 @@ const TelaConta = {
 
   pagamento(p, podeVoltar = false) {
     const codigoPedido = Pedido.codigo(p);
-    const assunto = encodeURIComponent(`Comprovante WC DEV - ${p.i}`);
-    const corpo = encodeURIComponent(
-      `Olá! Segue o comprovante do PIX.\n\nUsuário: ${p.n}\nPlano: ${p.pl} (${Util.dinheiro(p.v)})\nPedido: ${p.i}\nCriado em: ${Util.dataHora(p.c)}\n\nCódigo do pedido:\n${codigoPedido}\n\n(anexe o comprovante neste e-mail)`);
+    const zapFmt = WhatsApp.numero().replace(/^55(\d{2})(\d{4,5})(\d{4})$/, "+55 ($1) $2-$3");
     this.mostrar(`${this.logo()}
       <h2 class="conta-titulo">Pagamento via PIX</h2>
       <div class="resumo-pedido">
@@ -266,28 +291,29 @@ const TelaConta = {
         <li>Pague <b>exatamente ${Util.dinheiro(p.v)}</b> pra chave PIX:
           <div class="copiavel"><code id="chavePix">${Util.esc(CONFIG.pix)}</code><button data-copiar="${Util.esc(CONFIG.pix)}">copiar</button></div>
           Confira se o recebedor é <b>${Util.esc(CONFIG.recebedor)}</b>.</li>
-        <li>Anexe o <b>comprovante</b> e envie (o código do pedido vai junto automaticamente):
+        <li>Mande o <b>comprovante pelo WhatsApp</b> <b>${Util.esc(zapFmt)}</b>:
           <label class="anexo" id="anexo">
             <input type="file" id="arqComprovante" accept="image/*,application/pdf" hidden>
-            <span class="anexo-vazio">📎 <b>Toque pra escolher o comprovante</b><small>foto, print ou PDF</small></span>
+            <span class="anexo-vazio">📎 <b>Escolha o comprovante</b><small>foto, print ou PDF (fica só no seu aparelho até você mandar)</small></span>
           </label>
-          <div class="envio" id="envio" hidden>
-            <button class="btn-primario" id="btnCompartilhar" type="button">📤 Enviar comprovante</button>
-            ${CONFIG.whatsapp ? '<a class="btn-secundario" id="btnZap" target="_blank" rel="noopener">💬 WhatsApp</a>' : ""}
-            <a class="btn-secundario" id="btnEmail" href="mailto:${Util.esc(CONFIG.contato)}?subject=${assunto}&body=${corpo}">✉️ Por e-mail</a>
+          <div class="envio">
+            <button class="btn-primario btn-zap" id="btnZap" type="button">💬 Abrir o WhatsApp com o pedido</button>
           </div>
-          <p class="envio-nota" id="envioNota"></p>
+          <p class="envio-nota" id="envioNota">O WhatsApp abre com a mensagem do pedido pronta. Lá, <b>anexe o comprovante</b> (📎) e toque em enviar.</p>
+          <div class="envio-confirmar" id="envioConfirmar" ${p.zap && !p.env ? "" : "hidden"}>
+            <button class="btn-secundario" id="btnJaMandei" type="button">✅ Já mandei no WhatsApp</button>
+            <button class="btn-link" id="btnZapDeNovo" type="button">Abrir de novo</button>
+          </div>
           <details class="cod-manual"><summary>Ver código do pedido</summary>
             <div class="copiavel"><code class="cod-pedido">${Util.esc(codigoPedido)}</code><button data-copiar="${Util.esc(codigoPedido)}">copiar</button></div>
           </details>
-          ${p.env ? `<p class="envio-ok">✅ Comprovante enviado em ${Util.dataHora(p.env)}. Agora é só aguardar o código de ativação.</p>` : ""}</li>
-        <li>Quando o pagamento for confirmado você recebe um <b>código de ativação</b>. Cole aqui:
+          ${p.env ? `<p class="envio-ok">✅ Você confirmou que mandou o comprovante em ${Util.dataHora(p.env)}. Agora é só aguardar o código de ativação no WhatsApp.</p>` : ""}</li>
+        <li>Quando o pagamento for confirmado você recebe um <b>código de ativação</b> no WhatsApp. Cole aqui:
           ${this.formAtivar()}</li>
       </ol>
       <button class="btn-link" id="voltarPlanos">← Escolher outro plano</button>
       ${podeVoltar ? '<button class="btn-link" id="voltarChat">← Voltar pro chat</button>' : ""}`);
     if (podeVoltar) this.el.querySelector("#voltarChat").onclick = () => this.checar();
-    // mostra no histórico do pedido a hora certa em que foi gerado (o dono confere isso)
     this.el.querySelectorAll("[data-copiar]").forEach(b => (b.onclick = () => {
       navigator.clipboard.writeText(b.dataset.copiar).then(() => { b.textContent = "copiado!"; setTimeout(() => (b.textContent = "copiar"), 1500); });
     }));
@@ -296,19 +322,14 @@ const TelaConta = {
     this.el.querySelector("#voltarPlanos").onclick = () => this.planos("", podeVoltar);
   },
 
-  // escolher o comprovante e mandar pro dono (WhatsApp, e-mail, Telegram... o que o aparelho tiver)
+  // o comprovante vai SÓ pelo WhatsApp do número configurado (sem e-mail, sem "compartilhar com qualquer app")
   ligarComprovante(p, codigoPedido) {
     const $ = s => this.el.querySelector(s);
-    const input = $("#arqComprovante"), anexo = $("#anexo"), envio = $("#envio"), nota = $("#envioNota");
-    const texto = `Comprovante WC DEV\nUsuário: ${p.n}\nPlano: ${p.pl} (${Util.dinheiro(p.v)})\nPedido: ${p.i}\n\n${codigoPedido}`;
-    let arquivo = null, url = null;
-    const marcarEnviado = () => {
-      p.env = Date.now();
-      Guardar.salvar(chaveDoUsuario("pedido"), p);
-      nota.innerHTML = "✅ Pronto! Assim que o pagamento for conferido você recebe o <b>código de ativação</b>. Cole ele no passo 3.";
-    };
+    const input = $("#arqComprovante"), anexo = $("#anexo"), nota = $("#envioNota"), confirmar = $("#envioConfirmar");
+    const texto = `Olá! Segue o comprovante do PIX do WC DEV.\n\nUsuário: ${p.n}\nPlano: ${p.pl} (${Util.dinheiro(p.v)})\nPedido: ${p.i}\nCriado em: ${Util.dataHora(p.c)}\n\nCódigo do pedido:\n${codigoPedido}\n\n(o comprovante vai anexado nesta conversa)`;
+    let url = null;
     input.onchange = () => {
-      arquivo = input.files && input.files[0];
+      const arquivo = input.files && input.files[0];
       if (!arquivo) return;
       if (arquivo.size > 15 * 1024 * 1024) { nota.textContent = "Esse arquivo é muito grande (máx. 15 MB). Tire um print do comprovante."; return; }
       if (url) URL.revokeObjectURL(url);
@@ -317,27 +338,28 @@ const TelaConta = {
       anexo.classList.add("cheio");
       anexo.querySelector(".anexo-vazio").innerHTML = (img ? `<img src="${url}" alt="comprovante">` : `<span class="anexo-pdf">PDF</span>`) +
         `<span class="anexo-info"><b>${Util.esc(arquivo.name.slice(0, 40))}</b><small>${(arquivo.size / 1024).toFixed(0)} KB · toque pra trocar</small></span>`;
-      envio.hidden = false;
-      const podeCompartilhar = navigator.canShare && navigator.canShare({ files: [arquivo] });
-      $("#btnCompartilhar").hidden = !podeCompartilhar;
-      nota.innerHTML = podeCompartilhar
-        ? "Toque em <b>Enviar comprovante</b> e escolha o WhatsApp ou o e-mail. O código do pedido já vai junto."
-        : "Neste aparelho o envio é pelo e-mail: o texto já vai pronto, só <b>anexe o comprovante</b> que você escolheu antes de enviar.";
+      nota.innerHTML = "Comprovante escolhido. Toque em <b>Abrir o WhatsApp</b> e, na conversa, <b>anexe esse mesmo arquivo</b> (📎).";
     };
-    $("#btnCompartilhar").onclick = async () => {
-      try {
-        await navigator.share({ files: [arquivo], title: "Comprovante WC DEV", text: texto });
-        marcarEnviado();
-      } catch (e) {
-        if (e && e.name !== "AbortError") nota.innerHTML = "Não consegui abrir o compartilhamento. Use o botão de <b>e-mail</b>.";
-      }
+    const abrir = forcar => {
+      if (!forcar && WhatsApp.repetido(p.i)) { nota.innerHTML = "Você abriu essa conversa agora há pouco. Se ainda não mandou, use <b>Abrir de novo</b>; se já mandou, toque em <b>Já mandei</b>."; confirmar.hidden = false; return; }
+      const r = WhatsApp.abrir(texto, p.i, "comprovante");
+      if (!r.ok) { nota.innerHTML = "❌ " + Util.esc(r.erro); return; }
+      p.zap = Date.now();
+      Guardar.salvar(chaveDoUsuario("pedido"), p);
+      confirmar.hidden = false;
+      nota.innerHTML = r.bloqueado
+        ? `O navegador bloqueou a nova aba. <a href="${WhatsApp.link(texto)}" target="_blank" rel="noopener">Toque aqui pra abrir o WhatsApp</a>. A mensagem <b>ainda não foi enviada</b>.`
+        : "Abri o WhatsApp com a mensagem pronta. Ela <b>só é enviada quando você toca em enviar lá</b> (não esqueça de anexar o comprovante). Depois volte e toque em <b>Já mandei</b>.";
     };
-    const zap = $("#btnZap");
-    if (zap) {
-      zap.href = `https://wa.me/${CONFIG.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`;
-      zap.onclick = () => { marcarEnviado(); nota.innerHTML += "<br>No WhatsApp, <b>anexe o comprovante</b> na conversa junto com a mensagem."; };
-    }
-    $("#btnEmail").onclick = () => setTimeout(marcarEnviado, 500);
+    $("#btnZap").onclick = () => abrir(false);
+    $("#btnZapDeNovo").onclick = () => abrir(true);
+    $("#btnJaMandei").onclick = () => {
+      p.env = Date.now();
+      Guardar.salvar(chaveDoUsuario("pedido"), p);
+      WhatsApp.registrar({ ref: p.i, tipo: "comprovante", status: "confirmado-pela-pessoa" });
+      confirmar.hidden = true;
+      nota.innerHTML = "✅ Anotado! Assim que o pagamento for conferido você recebe o <b>código de ativação</b> no WhatsApp. Cole ele no passo 3.";
+    };
   },
 
   formAtivar() {
