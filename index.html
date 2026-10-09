@@ -77,22 +77,50 @@
     <!-- Editor de código (escrever, revisar e treinar) -->
     <section class="editor" id="editor" aria-hidden="true">
       <div class="editor-topo">
-        <span class="editor-titulo">&lt;/&gt; Editor</span>
+        <span class="editor-bolinhas" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="editor-titulo" id="editorArquivo">main.pwn</span>
         <select id="editorLang" aria-label="Linguagem">
           <option value="pawn">Pawn</option>
           <option value="python">Python</option>
           <option value="html">HTML</option>
           <option value="css">CSS</option>
         </select>
+        <button class="ed-icone so-pc" id="editorGrande" title="Editor grande" aria-label="Editor grande">⛶</button>
         <button class="editor-fechar" id="editorFechar" aria-label="Fechar editor">✕</button>
       </div>
+      <div class="editor-ferramentas">
+        <button id="edModelos" title="Modelos prontos">🧩 Modelos</button>
+        <button id="edFormatar" title="Arrumar o recuo (Shift+Alt+F)">✨ Formatar</button>
+        <button id="edAbrir" title="Abrir arquivo do aparelho">📂 Abrir</button>
+        <button id="edBaixar" title="Baixar o arquivo">💾 Baixar</button>
+        <span class="ed-espaco"></span>
+        <button id="edMenor" title="Letra menor" aria-label="Letra menor">A−</button>
+        <button id="edMaior" title="Letra maior" aria-label="Letra maior">A+</button>
+        <input type="file" id="edArquivo" hidden accept=".pwn,.inc,.p,.py,.html,.htm,.css,.txt">
+      </div>
+      <div class="ed-menu" id="edMenuModelos" hidden></div>
       <div class="editor-exercicio" id="editorExercicio" hidden></div>
-      <div class="editor-area">
-        <pre class="editor-linhas" id="editorLinhas" aria-hidden="true">1</pre>
-        <textarea id="editorCodigo" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off"></textarea>
+      <div class="editor-area" id="editorArea">
+        <pre class="editor-linhas" id="editorLinhas" aria-hidden="true"><span>1</span></pre>
+        <div class="editor-campo">
+          <pre class="editor-cores" id="editorCores" aria-hidden="true"></pre>
+          <textarea id="editorCodigo" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Código"></textarea>
+          <div class="ed-auto" id="edAuto" hidden></div>
+          <div class="ed-aviso" id="edAviso" role="status"></div>
+        </div>
+      </div>
+      <div class="ed-problema" id="edProblemaMsg" hidden></div>
+      <div class="ed-teclas" id="edTeclas" aria-label="Símbolos">
+        <button data-k="tab">⇥</button><button>{</button><button>}</button><button>(</button><button>)</button><button>;</button><button>"</button><button>[</button><button>]</button><button>=</button><button>&lt;</button><button>&gt;</button><button>/</button><button>:</button><button>#</button><button>_</button><button>,</button><button>.</button><button data-k="desfazer">↶</button>
+      </div>
+      <div class="ed-status">
+        <button class="ed-prob ok" id="edProblemas" title="Ir pro próximo problema">✔ Pronto</button>
+        <span class="ed-espaco"></span>
+        <span id="edPos">Ln 1, Col 1</span>
+        <span id="edInfo">Pawn</span>
       </div>
       <div class="editor-preview" id="editorPreview" hidden>
-        <div class="preview-topo">resultado</div>
+        <div class="preview-topo">resultado <small>(atualiza sozinho)</small></div>
         <iframe sandbox="" title="Resultado"></iframe>
       </div>
       <div class="editor-botoes">
@@ -101,10 +129,10 @@
         <button id="btnCorrigirCod">🔧 Corrigir</button>
         <button id="btnExplicarCod">📖 Explicar</button>
         <button id="btnVer">👁 Ver resultado</button>
-        <button id="btnCopiarCod">Copiar</button>
-        <button id="btnLimparCod">Limpar</button>
+        <button id="btnCopiarCod">📋 Copiar</button>
+        <button id="btnLimparCod">🗑 Limpar</button>
       </div>
-      <div class="editor-dica">Tab = 4 espaços · Ctrl+Enter envia</div>
+      <div class="editor-dica so-pc">Tab completa · Ctrl+Espaço sugere · Ctrl+/ comenta · Ctrl+D duplica · Alt+↑↓ move linha · Ctrl+Enter envia</div>
     </section>
   </div>
 
@@ -112,6 +140,7 @@
   <div class="tela-conta" id="telaConta" hidden></div>
 
   <!-- Base de conhecimento: cada linguagem em um arquivo -->
+  <script src="cores.js"></script>
   <script src="conversa.js"></script>
   <script src="python.js"></script>
   <script src="html.js"></script>
@@ -122,6 +151,7 @@
   <script src="treino.js"></script>
   <!-- Inteligência: entender frases, explicar/corrigir código, gerar código e desafios -->
   <script src="cerebro.js"></script>
+  <script src="professor.js"></script>
   <script src="explicador.js"></script>
   <script src="gerador.js"></script>
   <script src="desafios.js"></script>

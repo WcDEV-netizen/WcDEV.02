@@ -70,7 +70,7 @@ function formatar(texto) {
   return saida.join("").replace(/\u0000(\d+)\u0000/g, (_, i) => {
     const b = blocos[i];
     return `<div class="codigo"><div class="codigo-topo"><span>${b.lang}</span>` +
-      `<button class="copiar">copiar</button></div><pre>${escapar(b.cod)}</pre></div>`;
+      `<button class="copiar">copiar</button></div><pre>${WCDEV.cores ? WCDEV.cores.colorir(b.cod, b.lang) : escapar(b.cod)}</pre></div>`;
   });
 }
 
@@ -345,6 +345,7 @@ function usarTema(tema, ctx) {
   if (tema.lang !== "conversa" && !tema.ref) {
     estado.ultimaAula = tema;
     if (Treino.progresso && Treino.progresso._ultima !== tema.id) { Treino.progresso._ultima = tema.id; Treino.salvarProgresso(); }
+    if (WCDEV.professor) WCDEV.professor.marcarVista(tema);
   }
   if (ctx && WCDEV.cerebro) {
     const v = WCDEV.cerebro.vestir(tema, ctx);
@@ -606,7 +607,7 @@ function pensar(entrada) {
     if (cmd === "/pular") return Treino.pular();
     if (cmd === "/sair") return Treino.sair();
     if (cmd === "/zerar") return Treino.zerar(langArg);
-    if (cmd === "/progresso") return Treino.status();
+    if (cmd === "/progresso" || cmd === "/boletim") return WCDEV.professor ? WCDEV.professor.boletim() : Treino.status();
     if (cmd === "/ensinar") return Aprendizado.ensinar(bruto);
     if (cmd === "/esquecer") return Aprendizado.esquecer(bruto);
     if (cmd === "/aprendidos") return Aprendizado.listar();
@@ -635,6 +636,29 @@ function pensar(entrada) {
     const id = Treino.progresso && Treino.progresso._ultima;
     const aula = id && WCDEV.temas.find(x => x.id === id);
     if (aula) { estado.ultimaAula = aula; atualizarLang(aula.lang); return proximaAula(); }
+  }
+
+  // ===== Mensagem de erro do compilador / Python colada =====
+  if (WCDEV.professor && WCDEV.professor.ehMensagemDeErro(bruto)) {
+    const r = WCDEV.professor.explicarErros(bruto);
+    if (r) return r;
+  }
+  if (/^ (meu progresso|boletim|meu boletim|meu nivel|qual meu nivel|como estou|como eu to|quanto eu aprendi) $/.test(t0)) return pensar("/boletim");
+
+  // ===== "explica fácil" / "faz uma comparação" (sozinho ou com o assunto: "explica fácil o que é array") =====
+  const FACIL = / (facil|mais facil|de um jeito facil|pra leigo|como se eu tivesse \d+ anos|como se eu fosse crianca|de forma simples|simplifica|com uma comparacao|faz uma comparacao|exemplo da vida real|exemplo do dia a dia|com analogia|uma analogia) /;
+  if (WCDEV.professor && FACIL.test(t0) && t0.split(" ").length < 16 && !bruto.includes("\n") &&
+      /^ (me )?(explica|explique|explicar|pode explicar|o que e|oque e|faz|da|com|de um jeito|facil|mais facil|simplifica|traduz) /.test(t0)) {
+    const resto = t0.replace(FACIL, " ").replace(/ (explica|explique|me|explicar|de|um|uma|jeito|o|a|que|e|eh|sobre|pra|mim|mais|da|faz|com|exemplo) /g, " ").replace(/ (explica|explique|me|explicar|de|um|uma|jeito|o|a|que|e|eh|sobre|pra|mim|mais|da|faz|com|exemplo) /g, " ").trim();
+    const ultimo = estado.ultimo && estado.ultimo.lang !== "conversa" ? estado.ultimo : (estado.ultimaAula || estado.ultimo);
+    const alvo = resto.length > 2 ? (buscarTema(normalizar(resto), estado.lang) || { titulo: resto, chaves: [resto] }) : ultimo;
+    const a = alvo && (WCDEV.professor.analogia(" " + normalizar(resto) + " ") || WCDEV.professor.analogia(alvo));
+    if (a) {
+      if (alvo.id) estado.ultimo = alvo;
+      return { texto: `> 🧠 Bora sem termo técnico, com uma comparação do dia a dia.\n### 💡 Explicando fácil${alvo.titulo ? ": " + alvo.titulo : ""}\n${a}\n\nFez sentido? Se quiser, eu te mostro **um exemplo** em código ou te faço um **teste rápido**.`, sugestoes: alvo.id ? ["outro exemplo", "teste rápido", "/proximo"] : ["/pawn", "/python"] };
+    }
+    if (ultimo && !resto && WCDEV.cerebro) { const r = WCDEV.cerebro.continuar("melhor", ultimo); if (r) return r; }
+    if (!alvo) return { texto: "Claro! Me fala **qual assunto** você quer que eu explique fácil, tipo: **\"explica fácil o que é variável\"** ou **\"explica fácil callback\"**.", sugestoes: ["explica fácil variável", "explica fácil callback", "explica fácil loop"] };
   }
 
   // ===== Código colado no chat =====
@@ -669,6 +693,12 @@ function pensar(entrada) {
   if (estado.ultimo && WCDEV.cerebro && WCDEV.cerebro.ehContinuacao(t) && !lang) {
     const tipo = ["como", "exemplo", "erro"].includes(intent) ? "melhor" : intent;
     const r = WCDEV.cerebro.continuar(tipo, estado.ultimo);
+    if (r) return r;
+  }
+
+  // quer construir um projeto: monta o roteiro de estudo
+  if (WCDEV.professor) {
+    const r = WCDEV.professor.roteiro(t);
     if (r) return r;
   }
 

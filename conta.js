@@ -12,6 +12,7 @@ const CONFIG = {
   pix: "wadellencesar4@gmail.com",               // chave PIX
   recebedor: "Wadillen Cesar da Silva",          // nome que aparece no comprovante
   contato: "wadellencesar2@gmail.com",           // pra onde o cliente manda o comprovante
+  whatsapp: "",                                  // opcional: seu WhatsApp com DDI+DDD, só números (ex: "5511987654321")
   planos: [
     { id: "p10", nome: "10 dias", dias: 10, valor: 30 },
     { id: "p20", nome: "20 dias", dias: 20, valor: 60 },
@@ -264,9 +265,21 @@ const TelaConta = {
         <li>Pague <b>exatamente ${Util.dinheiro(p.v)}</b> pra chave PIX:
           <div class="copiavel"><code id="chavePix">${Util.esc(CONFIG.pix)}</code><button data-copiar="${Util.esc(CONFIG.pix)}">copiar</button></div>
           Confira se o recebedor é <b>${Util.esc(CONFIG.recebedor)}</b>.</li>
-        <li>Mande o <b>comprovante</b> junto com o <b>código do pedido</b>:
-          <div class="copiavel"><code class="cod-pedido">${Util.esc(codigoPedido)}</code><button data-copiar="${Util.esc(codigoPedido)}">copiar</button></div>
-          <a class="btn-secundario" href="mailto:${Util.esc(CONFIG.contato)}?subject=${assunto}&body=${corpo}">✉️ Enviar por e-mail</a></li>
+        <li>Anexe o <b>comprovante</b> e envie (o código do pedido vai junto automaticamente):
+          <label class="anexo" id="anexo">
+            <input type="file" id="arqComprovante" accept="image/*,application/pdf" hidden>
+            <span class="anexo-vazio">📎 <b>Toque pra escolher o comprovante</b><small>foto, print ou PDF</small></span>
+          </label>
+          <div class="envio" id="envio" hidden>
+            <button class="btn-primario" id="btnCompartilhar" type="button">📤 Enviar comprovante</button>
+            ${CONFIG.whatsapp ? '<a class="btn-secundario" id="btnZap" target="_blank" rel="noopener">💬 WhatsApp</a>' : ""}
+            <a class="btn-secundario" id="btnEmail" href="mailto:${Util.esc(CONFIG.contato)}?subject=${assunto}&body=${corpo}">✉️ Por e-mail</a>
+          </div>
+          <p class="envio-nota" id="envioNota"></p>
+          <details class="cod-manual"><summary>Ver código do pedido</summary>
+            <div class="copiavel"><code class="cod-pedido">${Util.esc(codigoPedido)}</code><button data-copiar="${Util.esc(codigoPedido)}">copiar</button></div>
+          </details>
+          ${p.env ? `<p class="envio-ok">✅ Comprovante enviado em ${Util.dataHora(p.env)}. Agora é só aguardar o código de ativação.</p>` : ""}</li>
         <li>Quando o pagamento for confirmado você recebe um <b>código de ativação</b>. Cole aqui:
           ${this.formAtivar()}</li>
       </ol>
@@ -277,8 +290,53 @@ const TelaConta = {
     this.el.querySelectorAll("[data-copiar]").forEach(b => (b.onclick = () => {
       navigator.clipboard.writeText(b.dataset.copiar).then(() => { b.textContent = "copiado!"; setTimeout(() => (b.textContent = "copiar"), 1500); });
     }));
+    this.ligarComprovante(p, codigoPedido);
     this.ligarAtivar();
     this.el.querySelector("#voltarPlanos").onclick = () => this.planos("", podeVoltar);
+  },
+
+  // escolher o comprovante e mandar pro dono (WhatsApp, e-mail, Telegram... o que o aparelho tiver)
+  ligarComprovante(p, codigoPedido) {
+    const $ = s => this.el.querySelector(s);
+    const input = $("#arqComprovante"), anexo = $("#anexo"), envio = $("#envio"), nota = $("#envioNota");
+    const texto = `Comprovante WC DEV\nUsuário: ${p.n}\nPlano: ${p.pl} (${Util.dinheiro(p.v)})\nPedido: ${p.i}\n\n${codigoPedido}`;
+    let arquivo = null, url = null;
+    const marcarEnviado = () => {
+      p.env = Date.now();
+      Guardar.salvar(chaveDoUsuario("pedido"), p);
+      nota.innerHTML = "✅ Pronto! Assim que o pagamento for conferido você recebe o <b>código de ativação</b>. Cole ele no passo 3.";
+    };
+    input.onchange = () => {
+      arquivo = input.files && input.files[0];
+      if (!arquivo) return;
+      if (arquivo.size > 15 * 1024 * 1024) { nota.textContent = "Esse arquivo é muito grande (máx. 15 MB). Tire um print do comprovante."; return; }
+      if (url) URL.revokeObjectURL(url);
+      url = URL.createObjectURL(arquivo);
+      const img = arquivo.type.startsWith("image/");
+      anexo.classList.add("cheio");
+      anexo.querySelector(".anexo-vazio").innerHTML = (img ? `<img src="${url}" alt="comprovante">` : `<span class="anexo-pdf">PDF</span>`) +
+        `<span class="anexo-info"><b>${Util.esc(arquivo.name.slice(0, 40))}</b><small>${(arquivo.size / 1024).toFixed(0)} KB · toque pra trocar</small></span>`;
+      envio.hidden = false;
+      const podeCompartilhar = navigator.canShare && navigator.canShare({ files: [arquivo] });
+      $("#btnCompartilhar").hidden = !podeCompartilhar;
+      nota.innerHTML = podeCompartilhar
+        ? "Toque em <b>Enviar comprovante</b> e escolha o WhatsApp ou o e-mail. O código do pedido já vai junto."
+        : "Neste aparelho o envio é pelo e-mail: o texto já vai pronto, só <b>anexe o comprovante</b> que você escolheu antes de enviar.";
+    };
+    $("#btnCompartilhar").onclick = async () => {
+      try {
+        await navigator.share({ files: [arquivo], title: "Comprovante WC DEV", text: texto });
+        marcarEnviado();
+      } catch (e) {
+        if (e && e.name !== "AbortError") nota.innerHTML = "Não consegui abrir o compartilhamento. Use o botão de <b>e-mail</b>.";
+      }
+    };
+    const zap = $("#btnZap");
+    if (zap) {
+      zap.href = `https://wa.me/${CONFIG.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`;
+      zap.onclick = () => { marcarEnviado(); nota.innerHTML += "<br>No WhatsApp, <b>anexe o comprovante</b> na conversa junto com a mensagem."; };
+    }
+    $("#btnEmail").onclick = () => setTimeout(marcarEnviado, 500);
   },
 
   formAtivar() {
