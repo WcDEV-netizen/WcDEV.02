@@ -175,3 +175,268 @@ Me diz qual linguagem e o que o erro fala, que eu te explico o tema certo.`,
     sugestoes: ["erros em python", "/html", "/css"],
   }
 );
+
+/* =========================================================
+   CONVERSA — dúvidas gerais sobre programação e carreira
+   ========================================================= */
+const tema = (id, titulo, chaves, resposta, sugestoes) =>
+  WCDEV.temas.push({ id, lang: "conversa", titulo, chaves, resposta, sugestoes });
+
+tema("como-estudar", "como estudar programação",
+  ["como estudar", "dicas de estudo", "como aprender rapido", "aprender mais rapido", "melhor jeito de aprender", "rotina de estudo"],
+  `Dicas que funcionam de verdade:
+- **Pratique todo dia**, nem que seja 20 minutos. Constância vale mais que maratona.
+- **Digite os códigos** em vez de só ler ou copiar.
+- **Faça projetos pequenos**: uma calculadora, um jogo da velha, uma página de perfil.
+- **Erre sem medo**: ler a mensagem de erro é metade do aprendizado.
+- **Explique pra alguém** o que aprendeu (ou pra mim!).
+- Quando travar, **quebre o problema** em pedaços menores.`,
+  ["ideias de projetos", "quanto tempo leva pra aprender"]);
+
+tema("tempo-aprender", "quanto tempo leva pra aprender",
+  ["quanto tempo", "quanto tempo leva", "em quanto tempo", "demora pra aprender", "quanto tempo pra aprender"],
+  `Depende do tanto que você pratica, mas uma ideia geral estudando um pouco todo dia:
+- **HTML e CSS básicos**: 2 a 4 semanas pra fazer páginas simples.
+- **Python básico** (variáveis, if, for, funções): 1 a 2 meses.
+- **Fazer projetos sozinho**: uns 3 a 6 meses.
+- **Trabalhar na área**: geralmente 1 ano ou mais de estudo e projetos.
+
+O segredo não é velocidade, é **não parar**. 🐢 > 🐇`,
+  ["como estudar programação", "por onde eu começo?"]);
+
+tema("ideias-projetos", "ideias de projetos",
+  ["ideia de projeto", "ideias de projetos", "o que posso fazer", "o que criar", "projeto para iniciante", "projetos para praticar", "o que programar"],
+  `Projetos pra praticar, do mais fácil pro mais difícil:
+**Python**
+- Calculadora no terminal
+- Jogo de adivinhar o número
+- Pedra, papel e tesoura contra o computador
+- Lista de tarefas que salva num arquivo
+- Gerador de senhas
+- Jogo da velha
+- Jogo com {{pygame}}
+
+**HTML + CSS**
+- Página de perfil / currículo
+- Página de uma loja ou lanchonete
+- Cardápio online
+- Landing page de um jogo
+- Portfólio com seus projetos`,
+  ["projeto em python", "projeto html"]);
+
+tema("javascript", "o que é JavaScript",
+  ["javascript", "js", "o que e javascript", "java script", "aprender javascript"],
+  `**JavaScript** é a linguagem que dá **vida** aos sites: botões que fazem coisas, jogos no navegador, animações, formulários inteligentes.
+O trio da web é:
+- **HTML** → estrutura
+- **CSS** → visual
+- **JavaScript** → comportamento
+
+Eu ensino Python, HTML e CSS. Depois de dominar HTML e CSS, JavaScript é o próximo passo natural! Pra começar, você pode colocar no HTML:
+~~~html
+<button onclick="alert('Olá!')">Clique</button>
+~~~`,
+  ["/html", "diferença entre java e javascript"]);
+
+tema("java-vs-js", "diferença entre java e javascript",
+  ["java e javascript", "java ou javascript", "diferenca entre java"],
+  `Apesar do nome parecido, **são linguagens totalmente diferentes**! É tipo "carro" e "carpete" 😄
+- **Java**: usada em sistemas de empresas, apps Android antigos, Minecraft (versão Java).
+- **JavaScript**: usada principalmente em **sites**, rodando no navegador.`,
+  ["o que é JavaScript"]);
+
+tema("lua-roblox", "programar no Roblox",
+  ["roblox", "lua", "luau", "roblox studio", "script roblox"],
+  `O Roblox usa a linguagem **Luau** (uma versão do Lua). A lógica é parecida com Python:
+~~~lua
+local pontos = 0
+if pontos >= 10 then
+    print("Você ganhou!")
+end
+
+for i = 1, 5 do
+    print(i)
+end
+~~~
+Quem aprende **Python** primeiro entende Luau muito rápido, porque os conceitos (variáveis, if, for, funções) são os mesmos!`,
+  ["quero aprender python", "o que é lógica de programação"]);
+
+tema("logica", "o que é lógica de programação",
+  ["logica", "logica de programacao", "raciocinio logico", "pensar como programador"],
+  `**Lógica de programação** é saber organizar os passos pra resolver um problema, antes mesmo de escrever código.
+Ela se resume a 3 coisas:
+- **Sequência**: fazer as coisas na ordem certa.
+- **Decisão**: {{if}}/{{else}} (se acontecer X, faça Y).
+- **Repetição**: {{for}}/{{while}} (faça isso várias vezes).
+
+A melhor linguagem pra treinar lógica é **Python**, porque o código parece português em inglês.`,
+  ["if else python", "for em python"]);
+
+tema("ia", "o que é inteligência artificial",
+  ["inteligencia artificial", "o que e ia", "como fazer uma ia", "criar ia", "machine learning", "aprendizado de maquina", "chatgpt", "como voce funciona"],
+  `**Inteligência artificial** é quando um programa aprende padrões com dados pra tomar decisões ou gerar coisas.
+Eu, o WC DEV, sou uma IA **simples**: procuro palavras-chave na sua pergunta e escolho a melhor resposta da minha base. IAs como o Claude são muito mais complexas: aprenderam com enormes quantidades de texto.
+Pra criar IAs de verdade, o caminho é:
+- Aprender **Python** muito bem
+- Matemática básica (estatística, álgebra)
+- Bibliotecas como {{numpy}}, {{pandas}} e {{scikit-learn}}`,
+  ["quero aprender python", "numpy", "pandas"]);
+
+tema("git", "o que é Git e GitHub",
+  ["git", "github", "versionamento", "controle de versao", "commit", "repositorio"],
+  `**Git** guarda o **histórico** do seu código: dá pra voltar no tempo se algo quebrar.
+**GitHub** é um site pra guardar seus projetos na nuvem e mostrar seu portfólio.
+Comandos básicos:
+~~~bash
+git init                     # começa a controlar a pasta
+git add .                    # prepara os arquivos
+git commit -m "primeira versão"
+git push                     # envia pro GitHub
+~~~
+Dica: com o **GitHub Pages** dá pra publicar seu site de HTML/CSS de graça!`,
+  ["publicar site"]);
+
+tema("terminal", "o que é terminal",
+  ["terminal", "prompt de comando", "cmd", "powershell", "linha de comando", "console"],
+  `O **terminal** é onde você conversa com o computador por texto. Comandos úteis:
+~~~bash
+cd pasta        # entra numa pasta
+cd ..           # volta uma pasta
+ls              # lista arquivos (no Windows: dir)
+python app.py   # roda um programa Python
+~~~
+No Windows: aperte **Win + R**, digite {{cmd}} e Enter. No VS Code: menu **Terminal → Novo Terminal**.`,
+  ["O que é Python e como instalar"]);
+
+tema("vscode", "o que é VS Code",
+  ["vs code", "visual studio code", "editor de codigo", "qual editor", "onde escrever codigo", "ide"],
+  `O **VS Code** é o editor de código mais usado do mundo, e é grátis.
+Extensões que eu recomendo:
+- **Python** (da Microsoft)
+- **Live Server**: atualiza seu site sozinho quando você salva
+- **Prettier**: organiza o código
+- **Portuguese Language Pack**: deixa em português
+
+No celular, dá pra programar com apps como **Pydroid 3** (Python) ou **Acode** (HTML/CSS).`,
+  ["programar no celular"]);
+
+tema("celular", "programar no celular",
+  ["programar no celular", "pelo celular", "no celular", "android", "sem computador", "nao tenho computador", "nao tenho pc"],
+  `Dá sim pra começar pelo celular! 📱
+- **Python**: app **Pydroid 3** (Android) ou o site **Programiz**.
+- **HTML/CSS**: app **Acode** ou o site **CodePen**.
+- **Replit**: site que roda várias linguagens no navegador.
+
+É mais lento de digitar, mas pra aprender lógica e testar códigos funciona muito bem.`,
+  ["quero aprender python", "quero aprender html"]);
+
+tema("emprego", "trabalhar com programação",
+  ["emprego", "trabalhar com programacao", "carreira", "salario", "ganhar dinheiro", "trabalho", "profissao", "freelancer", "ser programador"],
+  `Algumas áreas pra trabalhar com programação:
+- **Front-end**: faz a parte visual dos sites (HTML, CSS, JavaScript).
+- **Back-end**: faz a parte do servidor e banco de dados (Python, Java, Node...).
+- **Dados e IA**: analisa dados e cria modelos (Python).
+- **Jogos**: Roblox (Luau), Unity (C#), Godot.
+- **Freelancer**: faz sites e sistemas pra clientes.
+
+O mais importante pra começar: **portfólio**. Projetos seus, publicados, mostram mais que qualquer certificado.`,
+  ["ideias de projetos", "o que é Git e GitHub"]);
+
+tema("binario", "o que é binário",
+  ["o que e binario", "zeros e uns", "0 e 1", "como o computador entende"],
+  `O computador só entende **0 e 1** (desligado e ligado). Isso é o **binário**.
+Cada 0 ou 1 é um **bit**; 8 bits formam um **byte**.
+~~~
+0 = 0       3 = 11
+1 = 1       4 = 100
+2 = 10      5 = 101
+~~~
+As linguagens de programação existem pra gente não precisar escrever em 0 e 1! Em Python: {{bin(5)}} mostra {{'0b101'}}.`,
+  ["bin", "o que é programação"]);
+
+tema("variavel-geral", "o que é variável",
+  ["o que e variavel", "o que e uma variavel", "pra que serve variavel"],
+  `Uma **variável** é uma caixinha com nome onde você guarda um valor pra usar depois. Exemplo da vida real: um pote escrito "açúcar".
+Em Python:
+~~~python
+pontos = 10
+pontos = pontos + 5
+~~~`,
+  ["variáveis em python"]);
+
+tema("api-geral", "o que é API",
+  ["o que e api", "api", "o que e uma api"],
+  `Uma **API** é um jeito de um programa **conversar com outro**. Por exemplo: um app de clima pede os dados a uma API de meteorologia e recebe a resposta pronta.
+Em Python, você usa APIs com a biblioteca {{requests}}.
+Eu, o WC DEV, **não uso API**: tudo que sei está nos meus arquivos, por isso funciono offline!`,
+  ["requests"]);
+
+tema("frontend-backend", "front-end e back-end",
+  ["front end", "frontend", "back end", "backend", "full stack", "fullstack"],
+  `- **Front-end**: tudo que você **vê** num site (HTML, CSS, JavaScript).
+- **Back-end**: o que roda **no servidor**: login, banco de dados, pagamentos (Python, Node, PHP...).
+- **Full stack**: quem faz os dois.
+
+Com o que eu ensino: HTML e CSS = front-end; Python ({{flask}}, {{django}}) = back-end.`,
+  ["flask", "/html"]);
+
+tema("hackear", "hacker",
+  ["hacker", "hackear", "invadir", "hack"],
+  `Dá pra trabalhar com **segurança da informação** de forma legal: protegendo sistemas, achando falhas pra corrigir (e até ganhando recompensa por isso, nos programas de "bug bounty").
+Invadir contas ou sistemas dos outros é **crime**, e eu não ensino isso.
+O caminho certo começa com: programação (Python), redes, Linux, e depois cursos e plataformas de prática **legais**, como TryHackMe.`,
+  ["quero aprender python", "o que é terminal"]);
+
+tema("nome-wc", "o que significa WC DEV",
+  ["wc dev", "o que significa wc", "wcdev"],
+  `**WC DEV** é a marca que me criou! Eu sou o assistente que ensina programação de graça e funciona até sem internet 💙🖤`,
+  ["quem é você", "o que você sabe fazer?"]);
+
+tema("idade-ia", "quantos anos você tem",
+  ["quantos anos voce tem", "sua idade", "quando voce nasceu"],
+  `Sou bem novinho! Nasci como um monte de arquivos .js 😄 Mas já sei centenas de coisas sobre Python, HTML e CSS.`,
+  ["o que você sabe fazer?"]);
+
+tema("gosta", "você gosta de programar",
+  ["voce gosta", "qual sua linguagem favorita", "linguagem preferida", "qual a melhor linguagem"],
+  `Se eu tivesse que escolher, diria **Python** 🐍: é simples de ler e dá pra fazer quase tudo com ela. Mas **não existe melhor linguagem**, existe a melhor pra cada objetivo: HTML/CSS pra sites, Python pra lógica e IA, Luau pro Roblox.`,
+  ["diferença entre as linguagens"]);
+
+tema("sabe-fazer", "o que você sabe fazer?",
+  ["o que voce sabe fazer", "o que voce ensina", "quantas coisas voce sabe", "o que sabe"],
+  () => {
+    const n = l => WCDEV.temas.filter(x => x.lang === l).length;
+    return `Eu sei ensinar **${n("python")} coisas de Python**, **${n("html")} de HTML** e **${n("css")} de CSS**, além de bater papo sobre programação.
+Tem as **aulas da trilha** (em ordem) e a **consulta**: é só digitar o nome de qualquer função, tag ou propriedade, tipo {{append}}, {{<table>}} ou {{flexbox}}.
+Digite {{/indice python}} (ou html, css) pra ver tudo.`;
+  },
+  ["/indice python", "/indice html", "/indice css"]);
+
+tema("sim", "sim",
+  ["sim", "quero", "pode ser", "claro", "com certeza", "ok", "bora sim"],
+  "Show! Me diz o que você quer aprender ou digite {{/proximo}} pra seguir a aula.",
+  ["/proximo", "Python", "HTML", "CSS"]);
+
+tema("nao", "não",
+  ["nao", "nao quero", "agora nao", "depois"],
+  "Sem problemas! Quando quiser, é só chamar. 😉",
+  ["piada", "ideias de projetos"]);
+
+tema("lol", "risada",
+  ["kkk", "kkkk", "haha", "hahaha", "rsrs", "kkkkk", "lol"],
+  "😂 Programar também é divertido! Quer outra piada ou bora estudar?",
+  ["piada", "bora estudar"]);
+
+tema("elogio", "elogio",
+  ["voce e bom", "voce e legal", "gostei", "muito bom", "perfeito", "incrivel", "voce e top", "te amo"],
+  "Valeu! 💙 Fico feliz em ajudar. Bora continuar aprendendo?",
+  ["/proximo", "ideias de projetos"]);
+
+tema("xingamento", "calma",
+  ["idiota", "lixo", "inutil", "voce e ruim", "voce e burro"],
+  "Poxa, desculpa se não ajudei direito 😅 Eu funciono por palavras-chave, então às vezes erro. Tenta perguntar com o nome do comando, tipo **\"o que é append\"** ou **\"como usar flexbox\"**.",
+  ["o que você sabe fazer?", "/ajuda"]);
+
+// Estas só respondem quando a mensagem é EXATAMENTE a palavra (ex: "sim"),
+// pra não atrapalhar frases como "não funciona".
+["sim", "nao", "lol"].forEach(id => { WCDEV.temas.find(x => x.id === id).exato = true; });
