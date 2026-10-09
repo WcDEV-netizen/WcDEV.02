@@ -39,7 +39,9 @@
         <code>/indice pawn</code> tudo que sei<br>
         <code>/proximo</code> próxima aula<br>
         <code>/progresso</code> seu treino<br>
-        <code>/limpar</code> limpar chat
+        <code>/limpar</code> limpar chat<br>
+        <code>/porque</code> como eu pensei<br>
+        <code>/boletim</code> seu progresso
       </div>
 
       <div class="caixa-usuario" id="caixaUsuario"></div>
@@ -53,11 +55,12 @@
         <div class="topo-titulo">
           <span class="status"></span> WC DEV <small>assistente de programação</small>
         </div>
+        <button class="chip-memoria" id="chipMemoria" hidden title="O que eu estou lembrando desta conversa. Toque pra eu esquecer."></button>
         <div class="topo-lang" id="langAtual">—</div>
         <button class="btn-editor" id="btnEditor" title="Abrir o editor de código">&lt;/&gt; Editor</button>
       </header>
 
-      <div class="mensagens" id="mensagens">
+      <div class="mensagens" id="mensagens" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversa">
         <!-- Some quando o app.js carrega. Se aparecer, faltam arquivos .js na pasta. -->
         <div class="aviso-erro" id="avisoErro">
           ⚠️ <b>Os arquivos do chat não carregaram.</b><br>
@@ -146,11 +149,14 @@
   <script src="html.js"></script>
   <script src="css.js"></script>
   <script src="pawn.js"></script>
+  <script src="pawn-sistemas.js"></script>
+  <script src="aulas-extras.js"></script>
   <!-- Ferramentas: revisor de código, treino e "ensinar" -->
   <script src="revisor.js"></script>
   <script src="treino.js"></script>
   <!-- Inteligência: entender frases, explicar/corrigir código, gerar código e desafios -->
   <script src="cerebro.js"></script>
+  <script src="motor.js"></script>
   <script src="professor.js"></script>
   <script src="explicador.js"></script>
   <script src="gerador.js"></script>

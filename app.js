@@ -125,7 +125,7 @@ function adicionarMensagem(quem, conteudoHtml, sugestoes, preview, animar) {
 }
 
 function mostrarDigitando() {
-  return adicionarMensagem("bot", '<div class="digitando"><span></span><span></span><span></span></div>');
+  return adicionarMensagem("bot", '<div class="digitando" role="status" aria-label="WC DEV está pensando"><span></span><span></span><span></span></div>');
 }
 
 function responder(resposta, naoSalvar) {
@@ -137,6 +137,7 @@ function responder(resposta, naoSalvar) {
     d.remove();
     if (Historico.atualId !== conversa) return;   // trocou de conversa no meio
     adicionarMensagem("bot", formatar(resposta.texto), resposta.sugestoes, resposta.preview, true);
+    if (typeof atualizarMemoria === "function") atualizarMemoria();
   }, tempo);
 }
 
@@ -165,6 +166,22 @@ function detectarLinguagem(t) {
 /* ---------- Referências: transforma as listas dos arquivos em respostas ---------- */
 // Palavras do português que não podem virar palavra-chave sozinhas (ex: a tag <a>)
 const PALAVRAS_COMUNS = new Set(["a", "e", "o", "as", "os", "em", "do", "da", "de", "no", "na", "um", "uma", "se", "para", "com", "por", "que", "ou", "ao", "me", "eu"]);
+
+// de onde vem uma função do Pawn: nativa, include, plugin ou feita por você
+function origemPawn(nome, grupo) {
+  const n = nome.toLowerCase();
+  const de = [
+    [/^dof2/, "🧩 include DOF2"], [/^(sscanf|unformat)/, "🔌 plugin sscanf"], [/^(mysql|cache_)/, "🔌 plugin MySQL"],
+    [/^(createdynamic|streamer)|^streamer$/, "🔌 plugin streamer"], [/^bcrypt/, "🔌 plugin bcrypt"], [/^crashdetect/, "🔌 plugin crashdetect"],
+    [/^(zcmd|cmd:)/, "🧩 include zcmd"], [/^pawn\.cmd/, "🔌 plugin Pawn.CMD"], [/^(foreach|iter_)/, "🧩 include foreach"],
+    [/^(y_ini|dini|easydialog)/, "🧩 include"], [/^isnull/, "🧩 macro (vem no zcmd, ou você cria com #define)"],
+  ].find(([re]) => re.test(n));
+  if (de) return " · " + de[1];
+  if (grupo === "Sistema pronto") return " · ✍️ código pronto (funções criadas por você)";
+  if (/^(Callback|Função de jogador|Função de veículo|Função de servidor e mundo|Objeto, pickup e texto 3D|Dialog e textdraw|Constante)$/.test(grupo)) return " · ✅ nativa do SA-MP/open.mp";
+  if (grupo === "Texto, número e arquivo") return n === "sha256_passhash" ? " · ✅ nativa do SA-MP (0.3.7 R2+)" : /^(min, max|vectorsize)/.test(n) ? "" : " · ✅ nativa do Pawn";
+  return "";
+}
 
 function expandirReferencias() {
   (WCDEV.refs || []).forEach((bloco, b) => {
@@ -204,7 +221,7 @@ function expandirReferencias() {
         titulo: nome,
         botao: botao(item),
         chaves: chavesBoas,
-        resposta: `### ${nome}\n**${bloco.grupo}** · ${NOMES[bloco.lang]}\n${desc}` +
+        resposta: `### ${nome}\n**${bloco.grupo}** · ${NOMES[bloco.lang]}${bloco.lang === "pawn" ? origemPawn(nome, bloco.grupo) : ""}\n${desc}` +
           (exemplo ? `\n~~~${bloco.codigo || bloco.lang}\n${exemplo}\n~~~` : ""),
         sugestoes: bloco.itens.slice(i + 1, i + 4).map(botao),
       });
@@ -248,11 +265,14 @@ function buscaPorPalavras(t, lang) {
   for (const tema of WCDEV.temas) {
     if (lang && tema.lang !== lang && tema.lang !== "conversa") continue;
     if (!tema._palavras) continue;
-    let pts = 0, achou = 0;
+    let pts = 0, achou = 0, forte = 0;
     for (const q of qs) {
-      if (tema._palavras.has(q)) { pts += Math.log(INDICE.total / (INDICE.df[q] || 1)); achou++; }
+      if (tema._palavras.has(q)) {
+        pts += Math.log(INDICE.total / (INDICE.df[q] || 1)); achou++;
+        if (!WCDEV.motor || !WCDEV.motor.GENERICAS.has(q)) forte++;
+      }
     }
-    if (!achou) continue;
+    if (!achou || !forte) continue;   // só "samp" ou "criar" em comum não conta
     pts *= achou / qs.length + 0.5;        // vale mais quando bate mais palavras da pergunta
     if (tema.lang === (lang || estado.lang)) pts += 0.8;
     if (pts > melhorPts) { melhorPts = pts; melhor = tema; }
@@ -563,6 +583,15 @@ function acharPorNome(nome) {
 
 /* ---------- O cérebro ---------- */
 function pensar(entrada) {
+  const M = WCDEV.motor;
+  if (M) M.comecar(entrada.trim());
+  const r = pensarInterno(entrada);
+  if (M) M.terminar(r);
+  return r;
+}
+
+function pensarInterno(entrada) {
+  const M = WCDEV.motor;
   const bruto = entrada.trim();
   const t0 = normalizar(bruto);
 
@@ -587,8 +616,11 @@ function pensar(entrada) {
         const d = WCDEV.desafios.sobre(acharPorNome(resto.replace(/^sobre\s+/i, "")));
         return d ? Treino.abrir(d) : { texto: "Não achei esse assunto pra montar um desafio. Tente {{/desafio pawn}}." };
       }
-      const nivel = parseInt((resto.match(/\d/) || [])[0], 10) || null;
-      return Treino.abrir(WCDEV.desafios.gerar(langArg || estado.lang || "pawn", nivel));
+      const l = langArg || estado.lang || "pawn";
+      const nivel = parseInt((resto.match(/\d/) || [])[0], 10) || (WCDEV.professor ? WCDEV.professor.nivelAdaptado(l) : null);
+      const r = Treino.abrir(WCDEV.desafios.gerar(l, nivel));
+      if (r && r.texto && WCDEV.professor && !/\d/.test(resto)) r.texto = `> 🧠 Escolhi o nível ${WCDEV.professor.explicarNivel(l)} pelo seu desempenho.\n` + r.texto;
+      return r;
     }
     if (cmd === "/missao" || cmd === "/missão" || cmd === "/missoes") return Treino.abrir(WCDEV.desafios.missao(langArg || estado.lang || "pawn"));
     if (cmd === "/corrigir" || cmd === "/explicar") {
@@ -607,6 +639,7 @@ function pensar(entrada) {
     if (cmd === "/pular") return Treino.pular();
     if (cmd === "/sair") return Treino.sair();
     if (cmd === "/zerar") return Treino.zerar(langArg);
+    if (cmd === "/porque" || cmd === "/pensamento") return M ? M.explicarRastro() : null;
     if (cmd === "/progresso" || cmd === "/boletim") return WCDEV.professor ? WCDEV.professor.boletim() : Treino.status();
     if (cmd === "/ensinar") return Aprendizado.ensinar(bruto);
     if (cmd === "/esquecer") return Aprendizado.esquecer(bruto);
@@ -636,6 +669,14 @@ function pensar(entrada) {
     const id = Treino.progresso && Treino.progresso._ultima;
     const aula = id && WCDEV.temas.find(x => x.id === id);
     if (aula) { estado.ultimaAula = aula; atualizarLang(aula.lang); return proximaAula(); }
+  }
+
+  if (M && /^ (como (voce|vc) (pensou|chegou nisso|chegou nessa resposta)|por que (voce )?respondeu isso|porque respondeu isso|como pensou) $/.test(t0)) return M.explicarRastro();
+
+  // ===== Referências ao que já foi conversado ("agora corrige", "explica esse código", "faz igual pro colete") =====
+  if (M && !bruto.includes("\n")) {
+    const ref = M.referencia(t0, bruto) || M.fazIgual(t0, bruto);
+    if (ref) return ref;
   }
 
   // ===== Mensagem de erro do compilador / Python colada =====
@@ -677,7 +718,8 @@ function pensar(entrada) {
   const exato = WCDEV.temas.find(x => x.lang !== "conversa" && (x.botao === bruto || x.titulo === bruto)) ||
     WCDEV.temas.find(x => x._titulo === t0 && !x.exato && x.lang !== "conversa" && x.lang === estado.lang) ||
     WCDEV.temas.find(x => x._titulo === t0 && !x.exato && x.lang !== "conversa");
-  if (exato) return usarTema(exato, { intent: "geral", correcoes: [] });
+  if (exato) { if (M) M.passo("Busca", `nome exato: "${exato.titulo}"`); return usarTema(exato, { intent: "geral", correcoes: [] }); }
+  if (M) { const fd = M.funcaoDesconhecida(bruto, t0); if (fd) return fd; }
 
   // ===== Entender a frase =====
   const pre = WCDEV.cerebro ? WCDEV.cerebro.preprocessar(bruto) : { texto: t0, correcoes: [] };
@@ -686,8 +728,20 @@ function pensar(entrada) {
   const langDita = detectarLinguagem(t);
   const lang = langDita;
   const provavel = !langDita ? langProvavel(t) : null;
+  if (M) {
+    if (pre.correcoes.length) M.passo("Correção", pre.correcoes.map(([a, b]) => `"${a}" → "${b}"`).join(", "));
+    const pedeCodigo = / (cria|crie|criar|faz|faca|gera|gere|monta|monte|escreve|escreva) /.test(t) && / (sistema|comando|codigo|script|funcao|pagina|site|programa|cmd) /.test(t);
+    if (pedeCodigo) M.passo("Intenção", "quer que eu escreva código"); else M.passo("Intenção", { comparar: "comparar duas coisas", melhor: "explicar melhor", outroExemplo: "outro exemplo", desafio: "quer praticar", definicao: "quer saber o que é", exemplo: "quer um exemplo", erro: "tem um erro/problema", como: "quer saber como fazer", geral: "pergunta geral" }[intent] || intent);
+    M.passo("Linguagem", langDita ? `${NOMES[langDita]} (você falou)` : provavel ? `${NOMES[provavel]} (pelo assunto)` : estado.lang ? `${NOMES[estado.lang]} (da conversa)` : "não definida");
+  }
 
   if (/^ (proximo|proxima|continua|continuar|mais|segue|bora|proxima aula) $/.test(t)) return proximaAula();
+
+  // tecnologia que eu não ensino / pedido sem detalhe / "deu erro" sem código
+  if (M) {
+    const r = M.foraDaBase(t, bruto) || M.faltaDetalhe(t) || M.semCodigo(t);
+    if (r) return r;
+  }
 
   // continuação do último assunto ("explica melhor", "outro exemplo", "não entendi")
   if (estado.ultimo && WCDEV.cerebro && WCDEV.cerebro.ehContinuacao(t) && !lang) {
@@ -706,13 +760,19 @@ function pensar(entrada) {
   if (intent === "desafio" && WCDEV.desafios) {
     const l = lang || estado.lang || "pawn";
     if (/ (missao|missoes|projeto) /.test(t)) return Treino.abrir(WCDEV.desafios.missao(l));
-    return Treino.abrir(WCDEV.desafios.gerar(l, / (facil|iniciante) /.test(t) ? 1 : / (dificil|avancado) /.test(t) ? 3 : null));
+    return Treino.abrir(WCDEV.desafios.gerar(l, / (facil|iniciante) /.test(t) ? 1 : / (dificil|avancado) /.test(t) ? 3 : (WCDEV.professor ? WCDEV.professor.nivelAdaptado(l) : null)));
   }
 
   // pediu pra eu escrever um código
   if (WCDEV.gerador) {
     const g = WCDEV.gerador.tentar(bruto, t, lang || provavel);
-    if (g) { if (lang) atualizarLang(lang); return g; }
+    if (g) {
+      if (lang) atualizarLang(lang);
+      estado.ultimoPedido = bruto;
+      if (estado.ultimoCodigo) estado.ultimoCodigo.origem = "gerador";
+      if (M) M.passo("Geração", "montei o código a partir do seu pedido e passei no revisor");
+      return g;
+    }
   }
 
   // comparação ("diferença entre for e while")
@@ -735,11 +795,23 @@ function pensar(entrada) {
   const fora = foraDoAssunto(t);
   if (fora) return fora;
 
-  // compara a frase corrigida com a original e fica com a que entende melhor
+  // compara a frase corrigida com a original e fica com a que entende melhor (as duas com sinônimos)
+  const tExp = M ? M.expandir(t) : t;
+  if (M && tExp !== t) M.passo("Sinônimos", "também procurei por: " + tExp.slice(t.length).trim().split(" ").join(", "));
+  // primeiro procura com as palavras da pessoa; os sinônimos só ganham se acharem algo claramente melhor
   let achado = melhorTema(t, lang || provavel);
+  if (tExp !== t) {
+    const comSinonimos = melhorTema(tExp, lang || provavel);
+    if (comSinonimos.tema && (achado.pontos < 5 || comSinonimos.pontos >= achado.pontos + 3)) achado = comSinonimos;
+  }
   if (t !== t0) {
     const semCorrigir = melhorTema(t0, lang || provavel);
     if (semCorrigir.pontos > achado.pontos) { achado = semCorrigir; pre.correcoes = []; }
+  }
+  // achou algo, mas com pouca certeza e sem falar do assunto da pergunta? melhor admitir do que inventar
+  if (M && achado.tema && achado.pontos < 7 && !M.cobre(achado.tema, tExp)) {
+    M.passo("Busca", `"${achado.tema.titulo}" teve só ${achado.pontos} ponto(s) e não fala do assunto: descartei`);
+    achado = { tema: null, pontos: 0, segundo: null, pontos2: 0 };
   }
   const { tema: melhor, pontos: melhorPontos, segundo, pontos2 } = achado;
   const ctx = {
@@ -758,10 +830,19 @@ function pensar(entrada) {
     return listarTopicos(lang);
   }
 
-  if (melhor) return usarTema(melhor, ctx);
+  if (melhor) {
+    if (M) {
+      M.passo("Busca", `achei "${melhor.titulo}" (${NOMES[melhor.lang] || "conversa"}) com ${melhorPontos} pontos` + (ctx.relacionado ? ` + juntei "${ctx.relacionado.titulo}"` : ""));
+      if (ctx.langPorContexto) M.passo("Contexto", `a pergunta não dizia a linguagem: segui em ${NOMES[melhor.lang]}, que é o que estávamos vendo`);
+    }
+    return usarTema(melhor, ctx);
+  }
 
-  const porPalavra = buscaPorPalavras(t, lang || provavel);
-  if (porPalavra) return usarTema(porPalavra, { ...ctx, langPorContexto: !lang && porPalavra.lang === estado.lang });
+  const porPalavra = buscaPorPalavras(tExp, lang || provavel);
+  if (porPalavra && (!M || M.cobre(porPalavra, tExp))) {
+    if (M) M.passo("Busca", `achei "${porPalavra.titulo}" pelas palavras-chave`);
+    return usarTema(porPalavra, { ...ctx, langPorContexto: !lang && porPalavra.lang === estado.lang });
+  }
 
   const quis = parecidos(t, lang);
   if (quis.length) return { texto: "> 🧠 Não achei exatamente isso, mas achei coisas com nome parecido.\nVocê quis dizer:", sugestoes: quis };
@@ -770,6 +851,8 @@ function pensar(entrada) {
     const fa = WCDEV.foraDoAssunto;
     if (fa) return { texto: fa.respostas[0], sugestoes: ["/treinar", "quero aprender pawn", "/ajuda"] };
   }
+  // é de programação, mas eu não tenho isso na base: falo a verdade
+  if (M && M.palavrasDoAssunto(t).length) return M.naoSei(t, lang || provavel);
 
   const sugestoes = estado.lang
     ? temasDa(estado.lang).slice(0, 4).map(x => x.titulo)
@@ -812,14 +895,14 @@ function enviarCodigo(codigo, lang, modo) {
 
 function limparChat() {
   elMensagens.innerHTML = "";
-  estado.ultimo = null;
-  estado.ultimaAula = null;
+  if (WCDEV.motor) WCDEV.motor.limpar();
   Treino.ativo = null;
   Editor.fecharExercicio();
   atualizarLang(null);
   Historico.nova();
   marcarConversaAtiva();
   boasVindas();
+  atualizarMemoria();
 }
 
 function boasVindas() {
@@ -851,8 +934,7 @@ function abrirConversa(id) {
   const c = Historico.pegar(id);
   if (!c) return;
   elMensagens.innerHTML = "";
-  estado.ultimo = null;
-  estado.ultimaAula = null;
+  if (WCDEV.motor) WCDEV.motor.limpar();
   Treino.ativo = null;
   Editor.fecharExercicio();
   atualizarLang(null);
@@ -861,8 +943,14 @@ function abrirConversa(id) {
     if (m.q === "user") adicionarMensagem("user", m.codigo ? formatar(m.t) : escapar(m.t).replace(/\n/g, "<br>"));
     else adicionarMensagem("bot", formatar(m.t), m.s, m.p);
   });
+  // recupera o contexto da conversa salva: o último código e a linguagem
+  for (let i = c.msgs.length - 1; i >= 0; i--) {
+    const m = (c.msgs[i].t || "").match(/~~~(\w+)\n([\s\S]*?)~~~/);
+    if (m && NOMES[m[1]]) { estado.ultimoCodigo = { codigo: m[2].replace(/\n$/, ""), lang: m[1], origem: "conversa", turno: WCDEV.motor ? WCDEV.motor.turno : 0 }; atualizarLang(m[1]); break; }
+  }
   elSidebar.classList.remove("aberta");
   marcarConversaAtiva();
+  atualizarMemoria();
 }
 
 function listarConversas() {
@@ -870,10 +958,28 @@ function listarConversas() {
   if (!el) return;
   const lista = Historico.todas();
   el.innerHTML = lista.length ? "" : '<div class="sem-conversas">Suas conversas aparecem aqui.</div>';
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const grupoDe = c => {
+    const d = c.atualizado || c.criado || 0;
+    if (d >= hoje.getTime()) return "Hoje";
+    if (d >= hoje.getTime() - 86400000) return "Ontem";
+    if (d >= hoje.getTime() - 7 * 86400000) return "Últimos 7 dias";
+    return "Mais antigas";
+  };
+  let grupoAtual = null;
   lista.forEach(c => {
+    const g = grupoDe(c);
+    if (g !== grupoAtual && lista.length > 3) {
+      grupoAtual = g;
+      const t = document.createElement("div");
+      t.className = "conversa-grupo";
+      t.textContent = g;
+      el.appendChild(t);
+    }
     const item = document.createElement("div");
     item.className = "conversa" + (c.id === Historico.atualId ? " ativa" : "");
-    item.innerHTML = `<button class="conversa-abrir" title="${escapar(c.titulo)}">${escapar(c.titulo)}</button><button class="conversa-apagar" title="Apagar">✕</button>`;
+    const n = (c.msgs || []).length;
+    item.innerHTML = `<button class="conversa-abrir" title="${escapar(c.titulo)} (${n} mensagens)"${c.id === Historico.atualId ? ' aria-current="true"' : ""}>${escapar(c.titulo)}</button><button class="conversa-apagar" title="Apagar conversa" aria-label="Apagar a conversa ${escapar(c.titulo)}">✕</button>`;
     item.querySelector(".conversa-abrir").onclick = () => abrirConversa(c.id);
     item.querySelector(".conversa-apagar").onclick = () => {
       if (!confirm(`Apagar a conversa "${c.titulo}"?`)) return;
@@ -883,6 +989,17 @@ function listarConversas() {
     };
     el.appendChild(item);
   });
+  if (lista.length > 1) {
+    const b = document.createElement("button");
+    b.className = "conversas-limpar";
+    b.textContent = "Apagar todas as conversas";
+    b.onclick = () => {
+      if (!confirm("Apagar TODAS as conversas salvas neste aparelho? Isso não dá pra desfazer.")) return;
+      Historico.todas().forEach(c => Historico.apagar(c.id));
+      limparChat();
+    };
+    el.appendChild(b);
+  }
 }
 function marcarConversaAtiva() { listarConversas(); }
 WCDEV.aoMudarHistorico = listarConversas;
@@ -963,14 +1080,71 @@ document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = () => enviar(b.
 document.getElementById("btnNovo").onclick = () => { limparChat(); elSidebar.classList.remove("aberta"); };
 document.getElementById("btnMenu").onclick = () => elSidebar.classList.toggle("aberta");
 
-// botão "copiar" dos blocos de código
+// botão "copiar" dos blocos de código: copia tudo, ou só o trecho que você selecionou
+function trechoSelecionado(pre) {
+  const sel = window.getSelection && window.getSelection();
+  if (!sel || sel.isCollapsed || !pre.contains(sel.anchorNode) || !pre.contains(sel.focusNode)) return "";
+  return sel.toString();
+}
+elMensagens.addEventListener("mousedown", e => { if (e.target.classList.contains("copiar")) e.preventDefault(); });   // não perde a seleção
 elMensagens.addEventListener("click", e => {
   if (!e.target.classList.contains("copiar")) return;
-  const codigo = e.target.closest(".codigo").querySelector("pre").innerText;
-  navigator.clipboard.writeText(codigo).then(() => {
-    e.target.textContent = "copiado!";
-    setTimeout(() => (e.target.textContent = "copiar"), 1500);
-  });
+  const pre = e.target.closest(".codigo").querySelector("pre");
+  const trecho = trechoSelecionado(pre);
+  const texto = trecho || pre.innerText;
+  const botao = e.target;
+  const pronto = ok => {
+    botao.textContent = ok ? (trecho ? "✓ trecho copiado" : "✓ copiado") : "não deu pra copiar";
+    botao.classList.toggle("ok", ok);
+    setTimeout(() => { botao.textContent = "copiar"; botao.classList.remove("ok"); }, 1600);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(texto).then(() => pronto(true), () => pronto(false));
+  else pronto(false);
+});
+// selecionou um pedaço do código? o botão vira "copiar trecho"
+let _selTimer = null;
+document.addEventListener("selectionchange", () => {
+  clearTimeout(_selTimer);
+  _selTimer = setTimeout(() => {
+    elMensagens.querySelectorAll(".codigo").forEach(b => {
+      const botao = b.querySelector(".copiar");
+      if (!botao || botao.classList.contains("ok")) return;
+      botao.textContent = trechoSelecionado(b.querySelector("pre")) ? "copiar trecho" : "copiar";
+    });
+  }, 120);
+});
+
+/* ---------- memória visível: o que eu estou lembrando desta conversa ---------- */
+const elMemoria = document.getElementById("chipMemoria");
+function atualizarMemoria() {
+  if (!elMemoria) return;
+  const partes = [], detalhes = [];
+  if (estado.lang) { partes.push(NOMES[estado.lang]); detalhes.push("Linguagem: " + NOMES[estado.lang]); }
+  const c = WCDEV.motor ? WCDEV.motor.codigoRecente() : estado.ultimoCodigo;
+  if (c && c.origem !== "editor") {
+    const n = c.codigo.split("\n").length;
+    partes.push("código");
+    detalhes.push(`Último código: ${n} linha${n > 1 ? "s" : ""} de ${NOMES[c.lang] || c.lang}` + (c.origem === "aula" ? " (exemplo meu)" : /^gerad/.test(c.origem || "") ? " (eu montei)" : ""));
+  }
+  const assunto = estado.ultimo && estado.ultimo.lang !== "conversa" ? estado.ultimo.titulo : null;
+  if (assunto) detalhes.push("Assunto: " + assunto);
+  elMemoria.hidden = !partes.length && !assunto;
+  elMemoria.innerHTML = `🧠 <span>${escapar(partes.join(" · ") || "assunto")}</span>`;
+  elMemoria.title = "Estou lembrando nesta conversa:\n" + detalhes.join("\n") + "\n\nToque pra eu esquecer (as mensagens continuam salvas).";
+  elMemoria.setAttribute("aria-label", "Memória da conversa: " + detalhes.join(", ") + ". Ativar pra esquecer.");
+}
+if (elMemoria) elMemoria.onclick = () => {
+  if (WCDEV.motor) WCDEV.motor.limpar();
+  Treino.ativo = null;
+  atualizarLang(null);
+  atualizarMemoria();
+  adicionarMensagem("bot", formatar("🧹 Pronto, **esqueci o contexto** desta conversa: a linguagem, o último código e o último assunto. A próxima pergunta começa do zero.\nAs mensagens continuam salvas aqui; pra apagar a conversa, use o **✕** na lista da esquerda."), [], null, true);
+};
+
+/* ---------- teclado ---------- */
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); elTexto.focus(); }
+  if (e.key === "Escape" && elSidebar.classList.contains("aberta")) { elSidebar.classList.remove("aberta"); document.getElementById("btnMenu").focus(); }
 });
 
 expandirReferencias();

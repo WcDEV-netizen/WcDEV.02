@@ -578,3 +578,20 @@ body {
   .cartao-conta { padding: 22px 16px; }
   .mensagens { padding: 16px 12px; }
 }
+
+/* ----- Acessibilidade, memória e histórico ----- */
+:focus-visible { outline: 2px solid var(--azul-claro); outline-offset: 2px; }
+button:focus:not(:focus-visible) { outline: none; }
+.conversa-apagar:focus-visible { opacity: 1; }
+@media (hover: none) { .conversa-apagar { opacity: .6; } }
+.conversa-grupo { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--texto-fraco); padding: 8px 8px 2px; opacity: .8; }
+.conversas-limpar { background: none; border: none; color: var(--texto-fraco); font-size: 11.5px; padding: 8px; cursor: pointer; text-align: left; }
+.conversas-limpar:hover { color: #ff8fa3; }
+.chip-memoria { background: #0e1a33; border: 1px solid #24406b; color: var(--azul-claro); border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+.chip-memoria:hover { border-color: #ff8fa3; color: #ffc2cd; }
+.chip-memoria:hover span::after { content: " · esquecer"; }
+.copiar.ok { border-color: var(--verde) !important; color: var(--verde) !important; }
+/* conversas longas: o navegador só desenha as mensagens que estão na tela */
+.msg { content-visibility: auto; contain-intrinsic-size: auto 140px; }
+.msg:last-child, .msg:nth-last-child(2) { content-visibility: visible; }
+@media (max-width: 760px) { .chip-memoria { font-size: 11px; padding: 3px 8px; } }

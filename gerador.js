@@ -241,7 +241,134 @@ CMD:${nome}(playerid, params[])
   },
 
   /* ================= PAWN: sistemas ================= */
+  /* o que o código do usuário já tem (pra gerar compatível) */
+  contextoPawn() {
+    const u = estado.ultimoCodigo;
+    const c = u && u.lang === "pawn" && !/^(gerado|gerador|aula)$/.test(u.origem || "") ? u.codigo : "";
+    const ed = document.getElementById("editorCodigo");
+    const doEditor = ed && document.getElementById("editorLang").value === "pawn" ? ed.value : "";
+    const tudo = c + "\n" + doEditor;
+    const en = tudo.match(/enum\s+(\w+)\s*\{/);
+    const arr = en && tudo.match(new RegExp("new\\s+(\\w+)\\s*\\[\\s*MAX_PLAYERS\\s*\\]\\s*\\[\\s*" + en[1]));
+    return {
+      openmp: /#include\s*<open\.mp>/.test(tudo),
+      pawncmd: /#include\s*<Pawn\.CMD>/i.test(tudo),
+      enumNome: en ? en[1] : null,
+      arrayNome: arr ? arr[1] : null,
+      temOnPlayerConnect: /public\s+OnPlayerConnect/.test(tudo),
+    };
+  },
+
+  /* ---------- sistema de level/XP completo, montado conforme o pedido ---------- */
+  sistemaLevel(bruto, t) {
+    const ctx = this.contextoPawn();
+    const openmp = ctx.openmp || / (open.mp|openmp|omp) /.test(t);
+    const req = {
+      salvar: / (salva|salvar|salvamento|salvando|guardar|dof2|nao perder|persistencia|persistir|mysql|arquivo|conta) /.test(t),
+      mysql: / mysql /.test(t),
+      kill: / (kill|kills|matar|mata|matou|abate|morte) /.test(t),
+      tempo: / (tempo|minuto|minutos|hora|horas|jogado|jogando|online|payday) /.test(t),
+      hud: / (hud|textdraw|tela|barra) /.test(t),
+      admin: / (admin|adm|darxp|setlevel|setar) /.test(t),
+    };
+    if (!req.kill && !req.tempo) { req.kill = true; req.tempo = true; req.padraoGanho = true; }
+    const nums = this.numeros(t);
+    const xpKill = nums.find(n => n >= 1 && n <= 1000 && new RegExp(" " + n + " (de )?(xp|experiencia)? ?(por|a cada) (kill|morte|abate)").test(t)) || 25;
+    const xpTempo = nums.find(n => n >= 1 && n <= 1000 && new RegExp(" " + n + " (de )?(xp|experiencia)? ?(por|a cada) (minuto|min)").test(t)) || 10;
+    const CMD = ctx.pawncmd ? "cmd" : "CMD";
+
+    const inc = [openmp ? "#include <open.mp>" : "#include <a_samp>", ctx.pawncmd ? "#include <Pawn.CMD>" : "#include <zcmd>"];
+    if (req.admin) inc.push("#include <sscanf2>");
+    if (req.salvar) inc.push("#include <DOF2>");
+
+    const L = [];
+    L.push(inc.join("\n"), "");
+    L.push("// ===== Configuração do sistema de level =====");
+    L.push("#define XP_POR_NIVEL   100   // level 1 precisa de 100, level 2 de 200...");
+    if (req.kill) L.push(`#define XP_POR_KILL    ${xpKill}`);
+    if (req.tempo) L.push(`#define XP_POR_MINUTO  ${xpTempo}`);
+    L.push("", "enum E_LEVEL", "{", "    lvNivel,", "    lvXP" + (req.salvar ? "," : ""), ...(req.salvar ? ["    bool:lvCarregado"] : []), "}", "new Level[MAX_PLAYERS][E_LEVEL];");
+    if (req.hud) L.push("new PlayerText:HudLevel[MAX_PLAYERS];");
+    if (req.tempo) L.push("new TimerXP;");
+    L.push("", "stock XpNecessaria(nivel)", "{", "    return nivel * XP_POR_NIVEL;", "}");
+    if (req.hud) L.push("", "stock AtualizarHudLevel(playerid)", "{", "    new txt[48];",
+      "    format(txt, sizeof(txt), \"Level %d  ~b~%d/%d XP\", Level[playerid][lvNivel], Level[playerid][lvXP], XpNecessaria(Level[playerid][lvNivel]));",
+      "    PlayerTextDrawSetString(playerid, HudLevel[playerid], txt);", "    PlayerTextDrawShow(playerid, HudLevel[playerid]);", "}");
+    L.push("", "stock DarXP(playerid, quantidade)", "{", "    Level[playerid][lvXP] += quantidade;",
+      "    while (Level[playerid][lvXP] >= XpNecessaria(Level[playerid][lvNivel]))", "    {",
+      "        Level[playerid][lvXP] -= XpNecessaria(Level[playerid][lvNivel]);", "        Level[playerid][lvNivel]++;",
+      "        SetPlayerScore(playerid, Level[playerid][lvNivel]);", "",
+      "        // aviso de evolução", "        new msg[80];",
+      "        format(msg, sizeof(msg), \"Parabens! Voce subiu pro level %d!\", Level[playerid][lvNivel]);",
+      "        SendClientMessage(playerid, 0x33CC33FF, msg);", "        GameTextForPlayer(playerid, \"~g~LEVEL UP!\", 3000, 3);",
+      "        PlayerPlaySound(playerid, 1057, 0.0, 0.0, 0.0);", "    }", ...(req.hud ? ["    AtualizarHudLevel(playerid);"] : []), "}");
+    if (req.salvar) {
+      L.push("", "stock ArquivoLevel(playerid)", "{", "    new nome[MAX_PLAYER_NAME], arq[64];", "    GetPlayerName(playerid, nome, sizeof(nome));",
+        "    format(arq, sizeof(arq), \"Contas/%s.ini\", nome);", "    return arq;", "}",
+        "", "stock SalvarLevel(playerid)", "{", "    if (!Level[playerid][lvCarregado]) return 0;   // não salva por cima com dados zerados",
+        "    new arq[64];", "    format(arq, sizeof(arq), \"%s\", ArquivoLevel(playerid));", "    if (!DOF2_FileExists(arq)) DOF2_CreateFile(arq);",
+        "    DOF2_SetInt(arq, \"Nivel\", Level[playerid][lvNivel]);", "    DOF2_SetInt(arq, \"XP\", Level[playerid][lvXP]);", "    DOF2_SaveFile();", "    return 1;", "}",
+        "", "stock CarregarLevel(playerid)", "{", "    new arq[64];", "    format(arq, sizeof(arq), \"%s\", ArquivoLevel(playerid));",
+        "    if (DOF2_FileExists(arq))", "    {", "        Level[playerid][lvNivel] = DOF2_GetInt(arq, \"Nivel\");", "        Level[playerid][lvXP] = DOF2_GetInt(arq, \"XP\");",
+        "        if (Level[playerid][lvNivel] < 1) Level[playerid][lvNivel] = 1;", "    }",
+        "    Level[playerid][lvCarregado] = true;", "    SetPlayerScore(playerid, Level[playerid][lvNivel]);", "}");
+    }
+    if (req.tempo) L.push("", "forward XpPorTempo();", "public XpPorTempo()", "{", "    for (new i = 0; i < MAX_PLAYERS; i++)", "    {",
+      "        if (IsPlayerConnected(i)) DarXP(i, XP_POR_MINUTO);", "    }", "    return 1;", "}");
+    if (req.tempo) L.push("", "public OnGameModeInit()", "{", "    TimerXP = SetTimer(\"XpPorTempo\", 60000, true);   // a cada 1 minuto", "    return 1;", "}");
+    if (req.tempo || req.salvar) {
+      L.push("", "public OnGameModeExit()", "{");
+      if (req.tempo) L.push("    KillTimer(TimerXP);");
+      if (req.salvar) L.push("    for (new i = 0; i < MAX_PLAYERS; i++)", "    {", "        if (IsPlayerConnected(i)) SalvarLevel(i);", "    }", "    DOF2_Exit();");
+      L.push("    return 1;", "}");
+    }
+    L.push("", "public OnPlayerConnect(playerid)", "{",
+      "    Level[playerid][lvNivel] = 1;", "    Level[playerid][lvXP] = 0;");
+    if (req.salvar) L.push("    Level[playerid][lvCarregado] = false;", "    CarregarLevel(playerid);   // se você tem login, chame isso DEPOIS da senha certa");
+    else L.push("    SetPlayerScore(playerid, 1);");
+    if (req.hud) L.push("", "    HudLevel[playerid] = CreatePlayerTextDraw(playerid, 30.0, 320.0, \"Level 1\");",
+      "    PlayerTextDrawLetterSize(playerid, HudLevel[playerid], 0.3, 1.2);", "    PlayerTextDrawSetOutline(playerid, HudLevel[playerid], 1);");
+    L.push("    return 1;", "}");
+    if (req.salvar) L.push("", "public OnPlayerDisconnect(playerid, reason)", "{", "    SalvarLevel(playerid);", "    return 1;", "}");
+    if (req.hud) L.push("", "public OnPlayerSpawn(playerid)", "{", "    AtualizarHudLevel(playerid);", "    return 1;", "}");
+    if (req.kill) L.push("", "public OnPlayerDeath(playerid, killerid, reason)", "{",
+      "    if (killerid != INVALID_PLAYER_ID && killerid != playerid) DarXP(killerid, XP_POR_KILL);", "    return 1;", "}");
+    L.push("", `${CMD}:nivel(playerid, params[])`, "{", "    new msg[96];",
+      "    format(msg, sizeof(msg), \"Level %d | XP: %d/%d\", Level[playerid][lvNivel], Level[playerid][lvXP], XpNecessaria(Level[playerid][lvNivel]));",
+      "    SendClientMessage(playerid, 0x1E90FFFF, msg);", "    return 1;", "}");
+    if (req.admin) L.push("", `${CMD}:darxp(playerid, params[])`, "{", "    new alvo, qtd;",
+      "    if (!IsPlayerAdmin(playerid)) return SendClientMessage(playerid, 0xFF4444FF, \"So admin (RCON) pode usar.\");",
+      "    if (sscanf(params, \"ui\", alvo, qtd)) return SendClientMessage(playerid, -1, \"Use: /darxp [id] [quantidade]\");",
+      "    if (!IsPlayerConnected(alvo)) return SendClientMessage(playerid, -1, \"Jogador nao conectado.\");",
+      "    DarXP(alvo, qtd);", "    SendClientMessage(playerid, -1, \"XP entregue.\");", "    return 1;", "}");
+    const codigo = L.join("\n");
+    if (WCDEV.motor) WCDEV.motor.passo("Requisitos", ["XP + level", req.kill && "XP por kill", req.tempo && "XP por tempo", "aviso de evolução", req.salvar && "salvar (DOF2)", req.hud && "HUD", req.admin && "comando de admin", ctx.pawncmd && "Pawn.CMD (vi no seu código)", ctx.enumNome && `seu enum ${ctx.enumNome}`, openmp && "open.mp"].filter(Boolean).join(", "));
+
+    const oque = [
+      "cada level pede mais XP (**level × 100**), e o XP que sobra continua contando",
+      req.kill ? `**${xpKill} XP por kill**` + (req.padraoGanho ? " (você não disse como ganha XP, então coloquei kill **e** tempo)" : "") : null,
+      req.tempo ? `**${xpTempo} XP por minuto** jogado (um timer só pra todos, mais leve)` : null,
+      "**aviso de evolução**: mensagem verde + \"LEVEL UP!\" na tela + som",
+      req.salvar ? "**salva** level e XP com DOF2 (em {{scriptfiles/Contas/NOME.ini}}) ao sair e quando o servidor desliga" : null,
+      req.hud ? "**HUD** com level e XP na tela (PlayerTextDraw)" : null,
+      `comando **/nivel** pra ver o progresso` + (req.admin ? " e **/darxp** de admin" : ""),
+    ].filter(Boolean);
+    const notas = [
+      `Precisa de: ${inc.map(x => x.replace(/#include\s*/, "")).join(", ")}${req.admin ? " (o sscanf é plugin: .dll/.so + server.cfg)" : ""}.`,
+      ctx.enumNome ? `Vi que seu código já tem o enum **${ctx.enumNome}**${ctx.arrayNome ? ` com o array **${ctx.arrayNome}**` : ""}. Se preferir, mova {{lvNivel}} e {{lvXP}} pra dentro dele em vez de usar o {{Level[]}} separado.` : "Usei um array separado ({{Level[]}}) pra não brigar com o enum que você já tiver.",
+      ctx.temOnPlayerConnect || true ? "Se o seu gamemode **já tem** esses callbacks (OnPlayerConnect, OnPlayerDeath...), não duplique: copie só as linhas de dentro pro seu callback." : null,
+      req.salvar ? "Se você tem **login**, chame {{CarregarLevel(playerid)}} só depois que a senha estiver certa (não no OnPlayerConnect)." : null,
+      req.mysql ? "Você citou **MySQL**: fiz com DOF2 porque é mais simples de testar. Com MySQL a lógica é a mesma, só troca o salvar/carregar por {{mysql_tquery}}." : null,
+      "As mensagens do jogo estão **sem acento** de propósito: o chat do SA-MP mostra acento errado.",
+      "⚠️ Eu **não compilo** aqui: montei e revisei, mas compile no Pawno/Qawno e teste no servidor.",
+    ].filter(Boolean);
+    return this.entregar("pawn", "Sistema de level com XP" + (req.salvar ? " e salvamento" : ""), codigo, oque, notas);
+  },
+
   sistemaPawn(bruto, t) {
+    if (/ (level|nivel|xp|experiencia|upar|progressao) /.test(t) && / (sistema|sistemas|cria|crie|faz|faca|monta|gera|quero) /.test(t) && !/ (nivel de procurado|nivel de admin|nivel do admin) /.test(t)) {
+      return this.sistemaLevel(bruto, t);
+    }
     const aspas = (bruto.match(/["“”']([^"“”']{3,120})["“”']/) || [])[1];
     const min = parseInt((t.match(/ (\d+) (minutos|minuto|min) /) || [])[1] || "0", 10);
     if (/ (mensagem|mensagens|anuncio|anuncios|aviso|avisos|dica|dicas) (automatica|automaticas|automatico|automaticos) | a cada .* (mensagem|aviso) /.test(t)) {
@@ -441,10 +568,11 @@ ${partes.join("\n")}
   entregar(lang, titulo, codigo, oque, notas) {
     const r = WCDEV.revisor ? WCDEV.revisor.analisar(codigo, lang) : { problemas: [] };
     const erros = r.problemas.filter(p => p.tipo === "erro");
+    if (WCDEV.motor) WCDEV.motor.passo("Validação", `passei o código no revisor de ${NOMES[lang]}: ${erros.length} erro(s), ${r.problemas.length - erros.length} aviso(s)` + (r.problemas.some(p => /main\(\)/.test(p.msg)) ? " (o aviso do main() é normal: é um pedaço pra colar no seu gamemode)" : ""));
     let texto = `> 🧠 Entendi o que você quer e montei o código. Depois passei ele no meu revisor: ${erros.length ? `achei ${erros.length} ponto(s) pra conferir.` : "**nenhum erro** encontrado."}\n`;
     texto += `### ✅ ${titulo}\n**O que esse código faz:**\n${oque.map(x => "- " + x).join("\n")}\n~~~${lang}\n${codigo}\n~~~\n`;
     if (notas && notas.length) texto += `**Como usar:**\n${notas.map(x => "- " + x).join("\n")}`;
-    estado.ultimoCodigo = { codigo, lang };
+    estado.ultimoCodigo = { codigo, lang, origem: "gerado" };
     return { texto, sugestoes: ["/explicar", "/desafio " + lang, "/editor"], preview: lang === "html" ? codigo.replace(/^[\s\S]*<body>|<\/body>[\s\S]*$/g, "").replace(/^/, codigo.match(/<style>[\s\S]*<\/style>/)[0]) : null };
   },
 

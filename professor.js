@@ -184,7 +184,8 @@ const Professor = {
     if (!/ (servidor|gamemode|gm|site|pagina|portfolio|jogo|bot|projeto|server|rpg|roleplay|dm|corrida) /.test(t)) return null;
     const r = this.ROTEIROS.find(x => x.re.test(t));
     if (!r) {
-      if (/ (servidor|gamemode|gm|server) /.test(t) && (/ (samp|sa mp|sa-mp|gta|open.mp|openmp|pawn) /.test(t) || estado.lang === "pawn")) {
+      if (/ (servidor|gamemode|gm|server) /.test(t) && / (quero|queria|vou|bora|pretendo|preciso) /.test(t) && / (fazer|criar|abrir|ter|montar|comecar) /.test(t) &&
+          (/ (samp|sa mp|sa-mp|gta|open.mp|openmp|pawn) /.test(t) || estado.lang === "pawn")) {
         atualizarLang("pawn");
         return { texto: "> 🧠 Você quer montar um servidor de SA-MP. Antes de te passar o caminho, preciso saber o estilo.\n### 🎮 Que tipo de servidor?\nCada estilo tem uma ordem de estudo diferente. Escolhe um 👇", sugestoes: ["quero fazer um servidor rpg", "quero fazer um servidor dm", "quero fazer um servidor de corrida"] };
       }
@@ -202,6 +203,20 @@ const Professor = {
       texto: `> 🧠 Você quer construir um projeto de verdade. Montei o caminho na ordem que eu ensinaria, do mais básico ao mais avançado.\n### 🗺️ Roteiro: ${r.titulo}\n${passos}\n\nVai no seu ritmo: um passo por dia já é ótimo. Toque no passo que quer estudar agora 👇`,
       sugestoes: [...new Set([proximo ? proximo[1] : r.passos[0][1], ...r.passos.slice(0, 5).map(p => p[1])])].slice(0, 6),
     };
+  },
+
+  /* ================= DIFICULDADE QUE SE ADAPTA ================= */
+  // venceu muitos desafios -> sobe o nível; precisou ver muita resposta -> segura no nível mais fácil
+  nivelAdaptado(lang) {
+    const p = Treino.progresso || {};
+    const vitorias = (p._desafios || {})[lang] || 0;
+    const ajudas = (p._ajuda || {})[lang] || 0;
+    const nota = vitorias - ajudas * 0.7;
+    return nota < 3 ? 1 : nota < 8 ? 2 : 3;
+  },
+  explicarNivel(lang) {
+    const n = this.nivelAdaptado(lang);
+    return ["", "🌱 fácil (pra pegar o jeito)", "🔧 médio (você já está mandando bem)", "🚀 difícil (você já venceu vários)"][n];
   },
 
   /* ================= 4. PROGRESSO NAS TRILHAS ================= */

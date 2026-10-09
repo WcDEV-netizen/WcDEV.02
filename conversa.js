@@ -43,14 +43,19 @@ Pergunte do seu jeito, por exemplo: **"como criar um comando no samp"**, **"como
 - {{/desafio sobre SetPlayerHealth}}: desafio sobre qualquer assunto
 - {{/missao pawn}}: projeto maior com checklist
 - {{/dica}}, {{/resposta}}, {{/pular}}, {{/sair}}: dentro do treino
-- {{/progresso}}: quantos exercícios você já fez
-- Cole qualquer código e eu **reviso**; depois {{/corrigir}} conserta e {{/explicar}} explica linha por linha
+- {{/boletim}}: seu progresso nas trilhas (os desafios ficam mais difíceis conforme você vence)
+- Cole qualquer código e eu **reviso**; depois **"agora corrige"** conserta sem mexer no resto e **"explica linha por linha"** explica
+- Cole a **mensagem de erro** do compilador ou do Python que eu explico a linha
+- **"quero fazer um servidor RPG"**: monto o roteiro de estudo do projeto
 
 **Gerar código**
-- Peça do seu jeito: **"cria um comando /cura que dá 100 de vida só pra admin"**, **"faz um programa de calculadora em python"**, **"cria uma página de login"**
+- Peça do seu jeito: **"cria um comando /cura que dá 100 de vida só pra admin"**, **"cria um sistema de level com XP, salvamento e aviso"**, **"faz um programa de calculadora em python"**
+- Depois: **"faz igual pro colete"** ou **"agora só pra admin"** que eu refaço mantendo o resto
 
 **Conversar**
-- **"explica melhor"**, **"outro exemplo"**, **"diferença entre for e while"**, **"e em pawn?"**
+- **"explica melhor"**, **"explica fácil"**, **"outro exemplo"**, **"diferença entre for e while"**, **"e em pawn?"**
+- {{/porque}}: mostro as etapas que eu segui pra chegar na resposta
+- O balão **🧠** lá em cima mostra o que eu estou lembrando da conversa (toque nele pra eu esquecer)
 
 **Me ensinar**
 - {{/ensinar pergunta = resposta}}: eu aprendo uma resposta nova

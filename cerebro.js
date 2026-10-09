@@ -28,7 +28,7 @@ const Cerebro = {
     server: "servidor", sv: "servidor", gm: "gamemode", fs: "filterscript", td: "textdraw", tds: "textdraws",
     kickar: "kickar", kika: "kickar", kikar: "kickar", bane: "banir", bani: "banir",
     num: "numero", nums: "numeros", qtd: "quantidade", qnt: "quantidade", aleatorio: "aleatorio", random: "random",
-    erro: "erro", eror: "erro", erroo: "erro", bug: "bug", bugado: "bugado", bugou: "bugou",
+    erro: "erro", eror: "erro", dah: "dar", lvl: "level", lv: "level", upar: "upar", exp: "xp", inv: "inventario", org: "organizacao", fac: "faccao", erroo: "erro", bug: "bug", bugado: "bugado", bugou: "bugou",
   },
 
   // palavras comuns que NÃO devem ser "corrigidas"
@@ -94,7 +94,12 @@ const Cerebro = {
 
   // é uma pergunta de continuação sobre o último assunto? (mensagem curta, sem assunto novo)
   ehContinuacao(t) {
-    return t.trim().split(" ").length <= 7 && /^ (e |nao entendi|nao entendo|como assim|explica|explique|mais|outro|outra|me da|me mostra|mostra|pra que|para que|quando uso|quando usar|e como|como uso|como usa|serio|exemplo)/.test(t);
+    const m = t.match(/^ (e |nao entendi|nao entendo|como assim|explica|explique|mais|outro|outra|me da|me mostra|mostra|pra que|para que|quando uso|quando usar|e como|como uso|como usa|serio|exemplo)/);
+    if (!m || t.trim().split(" ").length > 7) return false;
+    // se sobrou um assunto novo ("como uso o websocket"), não é continuação: é pergunta nova
+    const LEVES = /^(isso|isto|ele|ela|esse|essa|este|esta|aquilo|ai|ae|entao|o|a|os|as|um|uma|de|do|da|no|na|em|pra|para|por|com|me|mim|ne|la|mesmo|tambem|melhor|direito|direitinho|devagar|denovo|novo|nova|exemplo|exemplos|outro|outra|mais|detalhe|detalhes|explica|explique|explicar|mostra|faz|isso ai|uso|usa|usar|como|assim|quando|que|serve|e|nao|entendi|entendo|pfv|por favor|favor|ainda|parte|codigo|linha|cada|ou|seja|pq|porque|serio|sim|beleza|certo|simples|facil|facilzinho|completo|pratico|real)$/;
+    const sobra = t.slice(m[0].length).trim().split(" ").filter(w => w && !LEVES.test(w));
+    return sobra.length === 0;
   },
 
   /* ---------- 3. respostas de continuação ---------- */
@@ -117,6 +122,23 @@ const Cerebro = {
         texto: `Claro! Aqui vai **${nome}** num exemplo mais completo, do jeito que você usaria de verdade:\n~~~${ultimo.lang}\n${extra}\n~~~\nQuer que eu explique linha por linha? Toque em **explica melhor**.`,
         sugestoes: ["explica melhor", `/desafio sobre ${nome}`],
       };
+      // aula da trilha: mostra o próximo exemplo da própria aula (um de cada vez)
+      if (!ultimo.ref && typeof ultimo.resposta === "string") {
+        const blocos = [...ultimo.resposta.matchAll(/~~~(\w*)\n([\s\S]*?)~~~/g)];
+        if (blocos.length > 1) {
+          ultimo._exemplo = ((ultimo._exemplo || 0) + 1) % blocos.length;
+          const b = blocos[ultimo._exemplo];
+          const expl = WCDEV.explicador ? WCDEV.explicador.explicar(b[2].replace(/\n$/, ""), b[1] || ultimo.lang, { semTitulo: true }) : "";
+          return {
+            texto: `> 🧠 Você pediu outro exemplo de **${nome}**. Peguei o exemplo ${ultimo._exemplo + 1} de ${blocos.length} da aula e expliquei cada linha.\n### 📌 ${nome}: exemplo ${ultimo._exemplo + 1}\n~~~${b[1] || ultimo.lang}\n${b[2]}~~~\n` + expl,
+            sugestoes: ["outro exemplo", "teste rápido", "/desafio sobre " + nome],
+          };
+        }
+        // só um exemplo: mostra uma função que aparece nele
+        const usadas = (this.primeiroCodigo(ultimo) || { codigo: "" }).codigo.match(/[A-Za-z_]\w{3,}(?=\()/g) || [];
+        const ref = usadas.map(n => WCDEV.temas.find(x => x.ref && x.lang === ultimo.lang && x.titulo === n)).find(Boolean);
+        if (ref) return { texto: `Olha um exemplo de **${ref.titulo}**, que aparece em **${nome}**:\n` + ref.resposta, sugestoes: ["outro exemplo", nome] };
+      }
       const vizinho = this.vizinho(ultimo);
       if (vizinho) return {
         texto: `Olha um exemplo parecido, com **${vizinho.titulo}** (do mesmo grupo de **${nome}**):\n` + vizinho.resposta,

@@ -143,12 +143,22 @@ const Treino = {
 
   dica() {
     if (!this.ativo) return { texto: "Você não está num exercício agora. Digite {{/treinar}} pra começar." };
+    this.ativo._dicaVista = true;
     return { texto: `💡 **Dica:** ${this.ativo.dica}`, sugestoes: ["/resposta", "/pular"] };
   },
 
   resposta() {
     if (!this.ativo) return { texto: "Você não está num exercício agora. Digite {{/treinar}} pra começar." };
+    // professor de verdade: primeiro uma dica, a resposta só se ainda travar
+    if (this.ativo.dica && !this.ativo._dicaVista) {
+      this.ativo._dicaVista = true;
+      return { texto: `Antes da resposta, tenta com uma dica 😉\n💡 **Dica:** ${this.ativo.dica}\n\nSe ainda travar, manda **/resposta** de novo que eu te mostro a solução inteira.`, sugestoes: ["/resposta", "/editor"] };
+    }
     if (!this.ativo.solucao) return { texto: "Essa missão não tem uma resposta única: cada um monta do seu jeito. Faça um item do checklist de cada vez e me pergunte o que não souber (ex: \"como usar AddPlayerClass\").", sugestoes: ["/dica"] };
+    const aj = this.progresso._ajuda || {};
+    aj[this.ativo.lang] = (aj[this.ativo.lang] || 0) + 1;
+    this.progresso._ajuda = aj;
+    this.salvarProgresso();
     return {
       texto: `Aqui está uma solução:\n~~~${this.ativo.lang}\n${this.ativo.solucao}\n~~~\nEntenda cada linha e **digite você mesmo no editor** (não cole!) pra fixar. Depois envie pra eu corrigir.`,
       sugestoes: ["/pular", "/sair"],
@@ -158,7 +168,7 @@ const Treino = {
   pular() {
     if (!this.ativo) return this.iniciar(estado.lang);
     if (this.ativo.missao) return this.abrir(WCDEV.desafios.missao(this.ativo.lang));
-    if (this.ativo.gerado) return this.abrir(WCDEV.desafios.gerar(this.ativo.lang));
+    if (this.ativo.gerado) return this.abrir(WCDEV.desafios.gerar(this.ativo.lang, WCDEV.professor ? WCDEV.professor.nivelAdaptado(this.ativo.lang) : null));
     const lang = this.ativo.lang;
     const lista = this.lista(lang);
     const prox = lista[(lista.indexOf(this.ativo) + 1) % lista.length];
