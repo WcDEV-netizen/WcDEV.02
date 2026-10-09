@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WC DEV — Aprenda a Programar</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Barra lateral -->
+    <aside class="sidebar" id="sidebar">
+      <div class="logo">
+        <span class="logo-icone">&gt;_</span>
+        <span class="logo-texto">WC <b>DEV</b></span>
+      </div>
+
+      <button class="btn-novo" id="btnNovo">+ Nova conversa</button>
+
+      <div class="secao-titulo">Trilhas</div>
+      <button class="trilha" data-cmd="/python"><span class="dot py"></span>Python</button>
+      <button class="trilha" data-cmd="/html"><span class="dot html"></span>HTML</button>
+      <button class="trilha" data-cmd="/css"><span class="dot css"></span>CSS</button>
+
+      <div class="secao-titulo">Comandos</div>
+      <div class="comandos">
+        <code>/ajuda</code> ver comandos<br>
+        <code>/python</code> tópicos de Python<br>
+        <code>/html</code> tópicos de HTML<br>
+        <code>/css</code> tópicos de CSS<br>
+        <code>/proximo</code> próxima aula<br>
+        <code>/limpar</code> limpar chat
+      </div>
+
+      <div class="rodape">Funciona offline · sem API</div>
+    </aside>
+
+    <!-- Área do chat -->
+    <main class="chat">
+      <header class="topo">
+        <button class="menu" id="btnMenu" aria-label="Abrir menu">☰</button>
+        <div class="topo-titulo">
+          <span class="status"></span> WC DEV <small>assistente de programação</small>
+        </div>
+        <div class="topo-lang" id="langAtual">—</div>
+      </header>
+
+      <div class="mensagens" id="mensagens"></div>
+
+      <form class="entrada" id="formulario">
+        <span class="prompt">❯</span>
+        <textarea id="texto" rows="1" placeholder="Pergunte algo... ex: como fazer um for em python"></textarea>
+        <button type="submit" id="btnEnviar" aria-label="Enviar">➤</button>
+      </form>
+    </main>
+  </div>
+
+  <!-- Base de conhecimento: cada linguagem em um arquivo -->
+  <script src="js/conversa.js"></script>
+  <script src="js/python.js"></script>
+  <script src="js/html.js"></script>
+  <script src="js/css.js"></script>
+  <!-- Motor do chat -->
+  <script src="js/app.js"></script>
+</body>
+</html>
