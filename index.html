@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WC DEV — Aprenda a Programar</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Barra lateral -->
+    <aside class="sidebar" id="sidebar">
+      <div class="logo">
+        <span class="logo-icone">&gt;_</span>
+        <span class="logo-texto">WC <b>DEV</b></span>
+      </div>
+
+      <button class="btn-novo" id="btnNovo">+ Nova conversa</button>
+
+      <div class="secao-titulo">Trilhas</div>
+      <button class="trilha" data-cmd="/pawn"><span class="dot pawn"></span>Pawn <small>SA-MP</small></button>
+      <button class="trilha" data-cmd="/python"><span class="dot py"></span>Python</button>
+      <button class="trilha" data-cmd="/html"><span class="dot html"></span>HTML</button>
+      <button class="trilha" data-cmd="/css"><span class="dot css"></span>CSS</button>
+
+      <div class="secao-titulo">Praticar</div>
+      <button class="trilha" data-cmd="/treinar"><span class="icone">🏋️</span>Treinar</button>
+      <button class="trilha" data-cmd="/revisar"><span class="icone">🔎</span>Revisar código</button>
+      <button class="trilha" data-cmd="/aprendidos"><span class="icone">🧠</span>Me ensinar</button>
+
+      <div class="secao-titulo">Comandos</div>
+      <div class="comandos">
+        <code>/ajuda</code> todos os comandos<br>
+        <code>/indice pawn</code> tudo que sei<br>
+        <code>/proximo</code> próxima aula<br>
+        <code>/progresso</code> seu treino<br>
+        <code>/limpar</code> limpar chat
+      </div>
+
+      <div class="rodape">Funciona offline · sem API</div>
+    </aside>
+
+    <!-- Área do chat -->
+    <main class="chat">
+      <header class="topo">
+        <button class="menu" id="btnMenu" aria-label="Abrir menu">☰</button>
+        <div class="topo-titulo">
+          <span class="status"></span> WC DEV <small>assistente de programação</small>
+        </div>
+        <div class="topo-lang" id="langAtual">—</div>
+      </header>
+
+      <div class="mensagens" id="mensagens">
+        <!-- Some quando o app.js carrega. Se aparecer, faltam arquivos .js na pasta. -->
+        <div class="aviso-erro" id="avisoErro">
+          ⚠️ <b>Os arquivos do chat não carregaram.</b><br>
+          Deixe estes arquivos todos <b>na mesma pasta</b> que o index.html:<br>
+          <code>app.js · conversa.js · python.js · html.js · css.js · pawn.js · revisor.js · treino.js · style.css</code><br>
+          Se você abriu direto de dentro do .zip, extraia primeiro.
+        </div>
+      </div>
+
+      <form class="entrada" id="formulario" action="javascript:void(0)">
+        <span class="prompt">❯</span>
+        <textarea id="texto" rows="1" enterkeyhint="send" autocomplete="off" placeholder="Pergunte algo ou cole um código..."></textarea>
+        <button type="submit" id="btnEnviar" aria-label="Enviar">➤</button>
+      </form>
+    </main>
+  </div>
+
+  <!-- Base de conhecimento: cada linguagem em um arquivo -->
+  <script src="conversa.js"></script>
+  <script src="python.js"></script>
+  <script src="html.js"></script>
+  <script src="css.js"></script>
+  <script src="pawn.js"></script>
+  <!-- Ferramentas: revisor de código, treino e "ensinar" -->
+  <script src="revisor.js"></script>
+  <script src="treino.js"></script>
+  <!-- Motor do chat -->
+  <script src="app.js"></script>
+</body>
+</html>
